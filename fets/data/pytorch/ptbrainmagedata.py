@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 import SimpleITK as sitk
 
 from tfedlrn import load_yaml
-from fets.data.pytorch import TumorSegmentationDataset, inverse_one_hot, check_for_file_or_gzip_file
+from fets.data.pytorch import TumorSegmentationDataset, check_for_file_or_gzip_file, find_file_or_with_extension, new_labels_from_float_output
 from data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 
 
@@ -97,6 +97,11 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
         # dictionary conversion of loaded pixel labels (example: turn all classes 1,2, 4 into a 1)
         self.class_label_map = class_label_map
         self.n_classes = len(np.unique(list(class_label_map.values())))
+
+        # if we are performing binary classification per pixel, we will disable one_hot conversion of labels
+        self.binary_classification =  self.n_classes == 2
+    
+
         
         self.train_dir_paths, self.val_dir_paths = get_train_and_val_dir_paths(data_path=data_path,
                                                                                feature_modes=self.feature_modes, 
@@ -133,31 +138,41 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
                                             label_tags = self.label_tags, 
                                             use_case=use_case,
                                             psize=self.psize,
-                                            class_label_map = self.class_label_map, 
+                                            class_label_map = self.class_label_map,
+                                            binary_classification = self.binary_classification, 
                                             divisibility_factor=self.divisibility_factor)
             return DataLoader(dataset,batch_size= self.batch_size,shuffle=shuffle,num_workers=1)
 
     
-    def write_outputs(self, outputs, metadata):
+    def write_outputs(self, outputs, metadata, output_file_tag):
         for idx, output in enumerate(outputs):
             dir_path = metadata["dir_path"][idx]
             base_fname = os.path.basename(dir_path)
-            output = inverse_one_hot(array=output, class_label_map=self.class_label_map)
-
+            fpath = os.path.join(dir_path, base_fname + "_" + output_file_tag + ".nii.gz")
+            
+            # process float outputs (accros output channels), providing labels as defined in values of self.class_label_map
+            output = new_labels_from_float_output(array=output,class_label_map=self.class_label_map, binary_classification=self.binary_classification)
+            
             # recovering from the metadata what the oringal input shape was
             original_input_shape = []
             original_input_shape.append(metadata["original_x_dim"].numpy()[idx])
             original_input_shape.append(metadata["original_y_dim"].numpy()[idx])
             original_input_shape.append(metadata["original_z_dim"].numpy()[idx])
             slices = [slice(0,original_input_shape[n]) for n in range(3)]
-            # now crop to original shape (must be consistent with how orinal zero padding was done)
-            output = output[tuple(slices)] 
-            fpath = os.path.join(dir_path, base_fname + "_newseg.nii.gz")
-            input_image_fpath = os.path.join(dir_path, base_fname + "_flair.nii.gz")
-            print("Writing inference NIfTI image of shape {} to {}".format(output.shape, fpath))
+
+            # now crop to original shape (dependency on how original zero padding was done)
+            output = output[tuple(slices)]
+
+            # convert array to SimpleITK image 
             image = sitk.GetImageFromArray(output)
+              
+            # get header info from an input image
+            input_image_fpath = os.path.join(dir_path, base_fname + self.feature_modes[0])
+            input_image_fpath = find_file_or_with_extension(input_image_fpath)
             input_image= sitk.ReadImage(input_image_fpath)
             image.CopyInformation(input_image)
+
+            print("Writing inference NIfTI image of shape {} to {}".format(output.shape, fpath))
             sitk.WriteImage(image, fpath)
             
 

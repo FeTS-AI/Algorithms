@@ -35,6 +35,7 @@ class PyTorch3DResUNet(BrainMaGeModel):
         super(PyTorch3DResUNet, self).__init__(**kwargs)
         self.init_network(device=self.device)
         self.init_optimizer()
+        
 
     def init_network(self, device, print_model=False, **kwargs):
         self.ins = in_conv(self.n_channels, self.base_filters, res=True)
@@ -53,7 +54,7 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.us_1 = UpsamplingModule(self.base_filters*4, self.base_filters*2)
         self.de_1 = DecodingModule(self.base_filters*4, self.base_filters*2, res=True)
         self.us_0 = UpsamplingModule(self.base_filters*2, self.base_filters)
-        self.out = out_conv(self.base_filters*2, self.n_classes, res=True)
+        self.out = out_conv(self.base_filters*2, self.label_channels, res=True)
 
         if print_model:
             print(self)

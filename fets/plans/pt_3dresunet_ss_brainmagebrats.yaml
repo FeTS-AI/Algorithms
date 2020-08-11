@@ -1,0 +1,67 @@
+# Compose an FL plan in JSON/YAML.
+# The plan is consumed by bin/run_simulation_from_flplan.py,
+# bin/run_aggregator_from_flplan, bin/run_collaborator_from_flplan, and
+# bin/create_initial_weights_file_from_plan.py
+
+# Note the use of yaml anchors and aliases in order to enforce dependencies
+# across portions of the config:
+# The anochor '&' assigns a name to a piece of the config
+# The alias '*' references an achor 
+
+# values for first level keys: model, aggregator, and collaborator
+# pass in the generic kwargs for those constructors
+# (ex. collaborator id will be collaborator specific)
+
+# values for first level keys: model and data pass in the generic
+# kwargs for get_model and get_data functions
+
+# values for the first level key: hostnames is used in the creation of the public
+# key infrastructure
+
+# The model version is used to validate model updates
+# Aggregator, collaborator, and fed ids (as well as model version) are currently
+# used to validate message headers. Collaborator ids are also
+# used for identifying the data folder of each collaborator
+# (using the local_data_config yaml file)
+
+aggregator_object_init:
+  init_kwargs:
+    rounds_to_train: 5
+    init_model_fname: pt_3dresunet_ss_brainmagebrats_init.pbuf
+    latest_model_fname: pt_3dresunet_ss_brainmagebrats_latest.pbuf
+    best_model_fname: pt_3dresunet_ss_brainmagebrats_best.pbuf
+
+model_object_init:
+  class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet
+  init_kwargs:
+    device: cpu
+    base_filters: 16
+    learning_rate: 1
+    loss_function: dc
+    opt: adam
+
+collaborator_object_init:
+  init_kwargs:
+    polling_interval  : 4
+    opt_treatment     : 'CONTINUE_LOCAL'
+    send_model_deltas : False
+    epochs_per_round  : 3.0
+
+network_object_init:
+  defaults_file: defaults/network.yaml
+ 
+data_object_init:
+  class_to_init: fets.data.pytorch.ptbrainmagedata.PyTorchBrainMaGeData
+  data_name_in_local_config: brats
+  init_kwargs: 
+    batch_size: 1
+    patch_size: [128,128,128]
+    feature_modes: ["_t1.nii", "_t2.nii", "_flair.nii", "_t1ce.nii"]
+    divisibility_factor: 16
+    class_label_map: {0: 0, 1: 1}
+
+inference:
+  allowed: True
+  kwargs:
+    output_file_tag: 'skull_stripper_seg'
+  

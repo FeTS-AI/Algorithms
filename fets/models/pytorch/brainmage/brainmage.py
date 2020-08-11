@@ -67,6 +67,11 @@ class BrainMaGeModel(PyTorchFLModel):
         self.opt = opt
         # model parameters
         self.n_classes = self.data.n_classes
+        self.binary_classification = self.n_classes == 2
+        if self.binary_classification:
+            self.label_channels = 1
+        else:
+            self.label_channels = self.n_classes
         self.base_filters = base_filters
         self.n_channels = self.data.n_channels
         self.which_model = self.__repr__()
@@ -161,7 +166,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                     output = self(features.float())
                     # Computing the loss
-                    loss = self.loss_fn(output.double(), mask.double(),self.n_classes)
+                    loss = self.loss_fn(output.double(), mask.double(),num_class=self.label_channels)
                     # Back Propagation for model to learn
                     loss.backward()
                     #Updating the weight values

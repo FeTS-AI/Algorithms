@@ -24,56 +24,77 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 
-def one_hot(array, class_label_map):
-    class_labels = np.sort(np.unique(list(class_label_map.values())))
-    new_labels_to_indices = {label: idx for idx, label in enumerate(class_labels)}
-      
-    idx_array = array.copy()
-    # now replace old labels in idx_array with indices of new labels
+
+def completely_replace_entries(array, old_to_new):
+    new_array = array.copy()
     sanity_check = np.zeros_like(array).astype(np.bool)
-    for old_label, new_label in class_label_map.items():
-        mask = array==old_label
-        idx_array[mask] = new_labels_to_indices[new_label]
+    for old, new in old_to_new:
+        mask = array==old
+        new_array[mask] = new
         sanity_check[mask]= True
     if not np.all(sanity_check):
-        raise RuntimeError("Onehot conversion of array was incomplete.")
+        raise RuntimeError("Overwrite of array was incomplete.")
+    return new_array
+
+
+def replace_old_labels_with_new(array, class_label_map):
+    # takes an old label mask and replaces with new labels
+    return completely_replace_entries(array=array, old_to_new=class_label_map.items())
+    
+
+def one_hot(array, class_label_map):
+    # converts newly labeled array to one-hot, skipping dimensions not represented in new labels
+    new_labels = np.sort(np.unique(list(class_label_map.values())))
+    new_labels_to_indices = {label: idx for idx, label in enumerate(new_labels)}
+
+    new_label_array = replace_old_labels_with_new(array=array, class_label_map=class_label_map)
+    idx_array = completely_replace_entries(array=new_label_array, old_to_new=new_labels_to_indices.items())
 
     # now one-hot encode using indices
-    new_array = np.eye(len(class_labels))[idx_array]
+    one_hot_array = np.eye(len(new_labels))[idx_array]
 
     # move the new (one-hot) axis to the 0th position
     axes = [-1]
-    axes.extend(range(len(new_array.shape))[:-1])
-    new_array = new_array.transpose(axes)
+    axes.extend(range(len(one_hot_array.shape))[:-1])
+    one_hot_array = one_hot_array.transpose(axes)
     
-    return new_array
+    return one_hot_array
 
-def inverse_one_hot(array, class_label_map):
-    # takes argmax across output label dimensions, then converts back to new labels, i.e.
-    # the values in class_label_map
-    class_labels = np.sort(np.unique(list(class_label_map.values())))
-    
-    idx_array = np.argmax(array, axis=0)
-    
-    new_array = idx_array.copy()
-    # now replace the indexes in new_array with labels from class_labels
-    sanity_check = np.zeros_like(new_array).astype(np.bool)
-    for idx, label in enumerate(class_labels):
-        mask = idx_array == idx
-        new_array[mask] = label
-        sanity_check[mask] = True
-    if not np.all(sanity_check):
-        raise RuntimeError("Conversion from onehot array was incomplete.")
 
-    return new_array
+def new_labels_from_float_output(array, class_label_map, binary_classification):
+    # infers class from float output (by finding new_class that is closest to float in the case (binary_classification) and
+    # by taking argmax across output label dimensions and converting back to new labels otherwise)
+    new_labels = np.sort(np.unique(list(class_label_map.values())))
+    if binary_classification:
+        # here the output has a single dim channel along 0th axis
+        array = np.squeeze(array, axis=0)
+        if len(new_labels) != 2:
+            raise ValueError("Provided class label map does not match binary classification designation.")
+        first_label, second_label = new_labels
+        dist_to_first_label = np.absolute(array - first_label * np.ones_like(array))
+        dist_to_second_label = np.absolute(array - second_label * np.ones_like(array))
+        first_label_mask = dist_to_first_label <= dist_to_second_label
+        
+        # now write out the appropriate outputs
+        output = array.copy()
+        output[first_label_mask] = first_label
+        output[~first_label_mask] = second_label
+    else:
+        # here the output has a multi dim channel along 0th axis 
+        # (dimensions correspond to new_labels according to logic in one_hot)
+        idx_array = np.argmax(array, axis=0)
+        output = completely_replace_entries(array=idx_array, old_to_new=enumerate(new_labels))
 
-"""
-# TEST
+    return output
+
+
+
+# TEST one_hot (though the new_labels.. test does not match the usual binary classification use case, this is ok for this unit test)
 assert np.all( one_hot(np.array([1, 3]), {1:1, 3:3}) == np.array([[1, 0], [0, 1]]) )
-assert np.all( inverse_one_hot(np.array([[1, 0], [0, 1]]), {1:1, 3:3}) == np.array([1, 3]) )
+assert np.all( new_labels_from_float_output(np.array([[1, 0], [0, 1]]), {1:1, 3:3}, False) == np.array([1, 3]) )
 assert np.all( one_hot(np.array([[1, 3], [1, 1]]), {1:1, 3:3}) == np.array([[[1, 0], [1, 1]], [[0, 1], [0, 0]]]) )
-assert np.all( inverse_one_hot(np.array([[[1, 0], [1, 1]], [[0, 1], [0, 0]]]), {1:1, 3:3}) == np.array([[[1, 3], [1, 1]]]) )
-"""
+assert np.all( new_labels_from_float_output(np.array([[[1, 0], [1, 1]], [[0, 1], [0, 0]]]), {1:1, 3:3}, False) == np.array([[[1, 3], [1, 1]]]) )
+
 
 def check_for_file_or_gzip_file(path, extensions=['.gz']):
     return find_file_or_with_extension(path, extensions) is not None
@@ -90,7 +111,7 @@ def find_file_or_with_extension(path, extensions=['.gz']):
 
 
 class TumorSegmentationDataset(Dataset):
-    def __init__(self, dir_paths, feature_modes, label_tags, use_case, psize, class_label_map, divisibility_factor=1):
+    def __init__(self, dir_paths, feature_modes, label_tags, use_case, psize, class_label_map, binary_classification, divisibility_factor=1):
         # use_case can be "training", "validation", or "inference"
         self.dir_paths = dir_paths
         self.feature_modes = feature_modes
@@ -98,6 +119,7 @@ class TumorSegmentationDataset(Dataset):
         self.use_case = use_case
         self.psize = psize
         self.class_label_map = class_label_map
+        self.binary_classification = binary_classification
         self.divisibility_factor = divisibility_factor
 
     def __len__(self):
@@ -180,9 +202,13 @@ class TumorSegmentationDataset(Dataset):
                 raise RuntimeError("Data sample directory (used for train or val) missing any label with provided tags.")
             label_array = sitk.GetArrayFromImage(label_image)   
             label_array = self.rcrop(array=label_array, psize=self.psize, axis_offset=0)
-            label_array = one_hot(array=label_array, class_label_map=self.class_label_map)
+            if self.binary_classification:
+                label_array = replace_old_labels_with_new(array=label_array, class_label_map=self.class_label_map)
+            else:
+                label_array = one_hot(array=label_array, class_label_map=self.class_label_map)
             if self.use_case == "training":
                 feature_array, label_array = self.transform(img=feature_array, gt=label_array, img_dim=len(self.feature_modes))
+            label_array = np.expand_dims(label_array, axis=0)
             sample = {'features': feature_array, 'gt' : label_array}
         elif self.use_case == "inference":
             original_input_shape = list(feature_array.shape)
