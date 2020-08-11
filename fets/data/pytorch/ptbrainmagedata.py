@@ -1,0 +1,169 @@
+# The following code is modified from https://github.com/CBICA/BrainMaGe which has the following lisence:
+
+# Copyright 2020 Center for Biomedical Image Computing and Analytics, University of Pennsylvania
+# Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+# 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+# 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY 
+# AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# This is a 3-clause BSD license as defined in https://opensource.org/licenses/BSD-3-Clause
+
+import numpy as np
+import os
+
+from torch.utils.data import DataLoader
+import SimpleITK as sitk
+
+from tfedlrn import load_yaml
+from fets.data.pytorch import TumorSegmentationDataset, inverse_one_hot, check_for_file_or_gzip_file
+from data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
+
+
+def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):
+    dir_names = os.listdir(data_path)
+    dir_paths = [os.path.join(data_path, dir_name) for dir_name in dir_names]
+    dir_paths = remove_incomplete_data_paths(dir_paths=dir_paths, 
+                                             feature_modes=feature_modes, 
+                                             label_tags=label_tags)
+    dir_paths = np.random.permutation(dir_paths)
+    index_cut = int(np.ceil(len(dir_paths) * percent_train))
+    train_dir_paths, val_dir_paths = dir_paths[:index_cut], dir_paths[index_cut:]
+    if set(train_dir_paths).union(set(val_dir_paths)) != set(dir_paths):
+        raise ValueError("You have sharded data as to drop some or duplicate.")
+    return train_dir_paths, val_dir_paths
+
+
+def get_inference_dir_paths(data_path, feature_modes):
+     inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
+     inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, feature_modes=feature_modes)
+     return inference_dir_paths
+
+
+def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[]):
+    filtered_dir_paths = []
+    for path in dir_paths:
+        dir_name = os.path.basename(path)
+        # check to that all features are present
+        all_modes_present = True
+        for mode in feature_modes:
+            fpath = os.path.join(path, dir_name + mode)
+            if not check_for_file_or_gzip_file(fpath):
+                all_modes_present = False
+                break
+        if all_modes_present:
+            have_needed_labels = False
+            for label_tag in label_tags:
+                fpath = os.path.join(path, dir_name + label_tag)
+                if check_for_file_or_gzip_file(fpath):
+                    have_needed_labels = True
+                    break
+            if label_tags == []:
+                have_needed_labels = True
+        
+        if all_modes_present and have_needed_labels:
+            filtered_dir_paths.append(path)
+        else:
+            print("Excluding data directory: {}, as not all required files present.".format(dir_name))
+    return filtered_dir_paths
+
+
+class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
+
+    def __init__(self, 
+                 batch_size,
+                 patch_size,
+                 feature_modes,
+                 data_path,
+                 divisibility_factor,
+                 class_label_map,
+                 percent_train=0.8, 
+                 label_tags = ["_seg_binary.nii", "_seg_binarized.nii", "_SegBinarized.nii", "_seg.nii"],
+                 **kwargs):
+
+        super().__init__(batch_size=batch_size)
+
+        self.psize = np.array(patch_size)
+        self.feature_modes = feature_modes
+        self.n_channels = len(feature_modes)
+        self.feature_shape = self.n_channels
+        # For loading inference data, where not only the patch size cannot ensure proper dimensions
+        # but zero padding may also be needed.
+        self.divisibility_factor = divisibility_factor
+
+        self.label_tags = label_tags
+        # dictionary conversion of loaded pixel labels (example: turn all classes 1,2, 4 into a 1)
+        self.class_label_map = class_label_map
+        self.n_classes = len(np.unique(list(class_label_map.values())))
+        
+        self.train_dir_paths, self.val_dir_paths = get_train_and_val_dir_paths(data_path=data_path,
+                                                                               feature_modes=self.feature_modes, 
+                                                                               label_tags=self.label_tags, 
+                                                                               percent_train=percent_train)
+        
+        self.inference_dir_paths = get_inference_dir_paths(data_path=data_path, feature_modes=self.feature_modes)
+
+        self.inference_loader = self.create_loader(use_case="inference")
+        self.train_loader = self.create_loader(use_case="training")
+        self.val_loader = self.create_loader(use_case="validation")
+        
+        self.training_data_size = len(self.train_loader)
+        self.validation_data_size = len(self.val_loader)
+
+    def create_loader(self, use_case):
+        if use_case == "training":
+            dir_paths = self.train_dir_paths
+            shuffle = True
+        elif use_case == "validation":
+            dir_paths = self.val_dir_paths
+            shuffle = False
+        elif use_case == "inference":
+            dir_paths = self.inference_dir_paths
+            shuffle = False
+        else:
+            raise ValueError("Specified use case for data loader is not known.")
+
+        if len(dir_paths) == 0:
+            return []
+        else:
+            dataset = TumorSegmentationDataset(dir_paths = dir_paths,
+                                            feature_modes = self.feature_modes, 
+                                            label_tags = self.label_tags, 
+                                            use_case=use_case,
+                                            psize=self.psize,
+                                            class_label_map = self.class_label_map, 
+                                            divisibility_factor=self.divisibility_factor)
+            return DataLoader(dataset,batch_size= self.batch_size,shuffle=shuffle,num_workers=1)
+
+    
+    def write_outputs(self, outputs, metadata):
+        for idx, output in enumerate(outputs):
+            dir_path = metadata["dir_path"][idx]
+            base_fname = os.path.basename(dir_path)
+            output = inverse_one_hot(array=output, class_label_map=self.class_label_map)
+
+            # recovering from the metadata what the oringal input shape was
+            original_input_shape = []
+            original_input_shape.append(metadata["original_x_dim"].numpy()[idx])
+            original_input_shape.append(metadata["original_y_dim"].numpy()[idx])
+            original_input_shape.append(metadata["original_z_dim"].numpy()[idx])
+            slices = [slice(0,original_input_shape[n]) for n in range(3)]
+            # now crop to original shape (must be consistent with how orinal zero padding was done)
+            output = output[tuple(slices)] 
+            fpath = os.path.join(dir_path, base_fname + "_newseg.nii.gz")
+            input_image_fpath = os.path.join(dir_path, base_fname + "_flair.nii.gz")
+            print("Writing inference NIfTI image of shape {} to {}".format(output.shape, fpath))
+            image = sitk.GetImageFromArray(output)
+            input_image= sitk.ReadImage(input_image_fpath)
+            image.CopyInformation(input_image)
+            sitk.WriteImage(image, fpath)
+            
+
+
+
+
+        
+
+
