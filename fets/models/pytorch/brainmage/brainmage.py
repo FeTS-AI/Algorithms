@@ -54,11 +54,30 @@ class BrainMaGeModel(PyTorchFLModel):
                  learning_rate, 
                  loss_function, 
                  opt, 
-                 device='cpu', 
+                 device='cpu',
+                 n_classes=4,
+                 n_channels=4,
+                 psize=[128,128,128],
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
         
         self.device = device
+
+        # FIXME: this puts priority for these values on data object over flplan. Is this correct?
+        if hasattr(data, 'n_classes'):
+            self.n_classes = data.n_classes
+        else:
+            self.n_classes = n_classes
+
+        if hasattr(data, 'n_channels'):
+            self.n_channels = data.n_channels
+        else:
+            self.n_channels = n_channels
+
+        if hasattr(data, 'psize'):
+            self.psize = data.psize
+        else:
+            self.psize = psize
 
         # setting parameters as attributes
         # training parameters
@@ -66,16 +85,13 @@ class BrainMaGeModel(PyTorchFLModel):
         self.which_loss = loss_function
         self.opt = opt
         # model parameters
-        self.n_classes = self.data.n_classes
         self.binary_classification = self.n_classes == 2
         if self.binary_classification:
             self.label_channels = 1
         else:
             self.label_channels = self.n_classes
         self.base_filters = base_filters
-        self.n_channels = self.data.n_channels
         self.which_model = self.__repr__()
-        self.psize = self.data.psize 
         
         ############### CHOOSING THE LOSS FUNCTION ###################
         if self.which_loss == 'dc':
