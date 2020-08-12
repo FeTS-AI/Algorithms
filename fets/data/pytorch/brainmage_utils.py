@@ -88,13 +88,13 @@ def new_labels_from_float_output(array, class_label_map, binary_classification):
     return output
 
 
-
+"""
 # TEST one_hot (though the new_labels.. test does not match the usual binary classification use case, this is ok for this unit test)
 assert np.all( one_hot(np.array([1, 3]), {1:1, 3:3}) == np.array([[1, 0], [0, 1]]) )
 assert np.all( new_labels_from_float_output(np.array([[1, 0], [0, 1]]), {1:1, 3:3}, False) == np.array([1, 3]) )
 assert np.all( one_hot(np.array([[1, 3], [1, 1]]), {1:1, 3:3}) == np.array([[[1, 0], [1, 1]], [[0, 1], [0, 0]]]) )
 assert np.all( new_labels_from_float_output(np.array([[[1, 0], [1, 1]], [[0, 1], [0, 0]]]), {1:1, 3:3}, False) == np.array([[[1, 3], [1, 1]]]) )
-
+"""
 
 def check_for_file_or_gzip_file(path, extensions=['.gz']):
     return find_file_or_with_extension(path, extensions) is not None
