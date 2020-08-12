@@ -25,7 +25,7 @@ import torch
 import torch.optim as optim
 from torch.autograd import Variable
 
-from tfedlrn import load_yaml
+from openfl import load_yaml
 from models.pytorch import PyTorchFLModel
 from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss
 
