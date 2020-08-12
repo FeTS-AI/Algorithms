@@ -38,7 +38,7 @@ data_object_init:
     patch_size: [128,128,128]
     feature_modes: ["_t1.nii", "_t2.nii", "_flair.nii", "_t1ce.nii"]
     divisibility_factor: 16
-    class_label_map: {0: 0, 1: 1, 2: 1, 4: 1}
+    class_label_map: {0: 0, 1: 1, 2: 2, 4: 4}
 
 inference:
   allowed: True
