@@ -14,13 +14,21 @@
 import numpy as np
 import torch 
 
-def dice_loss(inp, target):
+def dice_loss(output, target, binary_classification):
+    if not binary_classification:
+        # we will not count the background class (here in dim=0 of axis=1)
+        output = output[:,1:,:,:]
+        target = target[:,1:,:,:]
+
     smooth = 1e-7
-    iflat = inp.contiguous().view(-1)
-    tflat = target.contiguous().view(-1)
-    intersection = (iflat * tflat).sum()
-    return 1 - ((2. * intersection + smooth) /
-                (iflat.sum() + tflat.sum() + smooth))
+    total_dice = 0
+    num_pos_classes = output.shape[1]
+    for dim in num_pos_classes:
+        output_flat_channel = output[:,dim,:,:,:].contiguous().view(-1)
+        target_flat_channel = target[:,dim,:,:,:].contiguous().view(-1)
+        intersection = (output_flat_channel * target_flat_channel).sum()
+        total_dice +=  1 - ((2. * intersection + smooth) / (output_flat_channel.sum() + target_flat_channel.sum() + smooth))
+    return total_dice / num_pos_classes
 
 def MCD_loss(pm, gt, num_class):
     acc_dice_loss = 0

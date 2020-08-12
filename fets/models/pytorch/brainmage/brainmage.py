@@ -188,7 +188,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     #Updating the weight values
                     self.optimizer.step()
                     #Pushing the dice to the cpu and only taking its value
-                    curr_loss = dice_loss(output[:,0,:,:,:].double(), mask[:,0,:,:,:].double()).cpu().data.item()
+                    curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                     #train_loss_list.append(loss.cpu().data.item())
                     total_loss+=curr_loss
                     self.lr_scheduler.step()
@@ -219,7 +219,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 mask = subject['gt']
                 features, mask = features.to(device), mask.to(device)
                 output = self(features.float())
-                curr_loss = dice_loss(output[:,0,:,:,:].double(), mask[:,0,:,:,:].double()).cpu().data.item()
+                curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                 total_loss+=curr_loss
                 #Computing the dice score 
                 curr_dice = 1 - curr_loss
