@@ -19,7 +19,7 @@ import SimpleITK as sitk
 
 from openfl import load_yaml
 from fets.data.pytorch import TumorSegmentationDataset, check_for_file_or_gzip_file, find_file_or_with_extension, new_labels_from_float_output
-from data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
+from openfl.data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 
 
 def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):

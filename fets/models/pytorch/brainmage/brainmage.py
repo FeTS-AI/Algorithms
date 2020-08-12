@@ -26,7 +26,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from openfl import load_yaml
-from models.pytorch import PyTorchFLModel
+from openfl.models.pytorch import PyTorchFLModel
 from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
