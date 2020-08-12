@@ -55,7 +55,7 @@ class BrainMaGeModel(PyTorchFLModel):
                  loss_function, 
                  opt, 
                  device='cpu',
-                 n_classes=4,
+                 n_classes=2,
                  n_channels=4,
                  psize=[128,128,128],
                  **kwargs):
