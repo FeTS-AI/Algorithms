@@ -64,17 +64,17 @@ class BrainMaGeModel(PyTorchFLModel):
         self.device = device
 
         # FIXME: this puts priority for these values on data object over flplan. Is this correct?
-        if hasattr(data, 'n_classes'):
+        if hasattr(data, 'n_classes') and data.n_classes is not None:
             self.n_classes = data.n_classes
         else:
             self.n_classes = n_classes
 
-        if hasattr(data, 'n_channels'):
+        if hasattr(data, 'n_channels') and data.n_channels is not None:
             self.n_channels = data.n_channels
         else:
             self.n_channels = n_channels
 
-        if hasattr(data, 'psize'):
+        if hasattr(data, 'psize') and data.psize is not None:
             self.psize = data.psize
         else:
             self.psize = psize
