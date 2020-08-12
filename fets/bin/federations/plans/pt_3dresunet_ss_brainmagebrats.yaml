@@ -1,28 +1,9 @@
 # Compose an FL plan in JSON/YAML.
-# The plan is consumed by bin/run_simulation_from_flplan.py,
+# The plan is consumed by
+#  bin/create_pki_for_flplan.py, 
+# bin/run_inference_from_flplan.py, bin/run_simulation_from_flplan.py,
 # bin/run_aggregator_from_flplan, bin/run_collaborator_from_flplan, and
-# bin/create_initial_weights_file_from_plan.py
-
-# Note the use of yaml anchors and aliases in order to enforce dependencies
-# across portions of the config:
-# The anochor '&' assigns a name to a piece of the config
-# The alias '*' references an achor 
-
-# values for first level keys: model, aggregator, and collaborator
-# pass in the generic kwargs for those constructors
-# (ex. collaborator id will be collaborator specific)
-
-# values for first level keys: model and data pass in the generic
-# kwargs for get_model and get_data functions
-
-# values for the first level key: hostnames is used in the creation of the public
-# key infrastructure
-
-# The model version is used to validate model updates
-# Aggregator, collaborator, and fed ids (as well as model version) are currently
-# used to validate message headers. Collaborator ids are also
-# used for identifying the data folder of each collaborator
-# (using the local_data_config yaml file)
+# bin/create_initial_weights_file_from_plan.py 
 
 aggregator_object_init:
   init_kwargs:
