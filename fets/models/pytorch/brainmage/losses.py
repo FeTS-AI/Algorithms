@@ -12,28 +12,57 @@
 # This is a 3-clause BSD license as defined in https://opensource.org/licenses/BSD-3-Clause
  
 import numpy as np
-import torch 
+import torch
 
-def dice_loss(output, target, binary_classification):
+def channel_dice_loss(output, target, smooth=1e-7):
+    output = output.contiguous().view(-1)
+    target = target.contiguous().view(-1)
+    intersection = (output * target).sum()
+    return 1 - ((2. * intersection + smooth) / (output.sum() + target.sum() + smooth))
+
+
+
+def channel_log_dice_loss(output, target, smooth=1e-7):
+    output = output.contiguous().view(-1)
+    target = target.contiguous().view(-1)
+    intersection = (output * target).sum()
+    return -np.log((2. * intersection + smooth) / (output.sum() + target.sum() + smooth))
+
+
+def ave_loss_over_channels(output, target, binary_classification, channel_loss_fn, **kwargs):
     if not binary_classification:
         # we will not count the background class (here in dim=0 of axis=1)
         output = output[:,1:,:,:]
         target = target[:,1:,:,:]
-
-    smooth = 1e-7
     total_dice = 0
-    num_pos_classes = output.shape[1]
-    for dim in num_pos_classes:
-        output_flat_channel = output[:,dim,:,:,:].contiguous().view(-1)
-        target_flat_channel = target[:,dim,:,:,:].contiguous().view(-1)
-        intersection = (output_flat_channel * target_flat_channel).sum()
-        total_dice +=  1 - ((2. * intersection + smooth) / (output_flat_channel.sum() + target_flat_channel.sum() + smooth))
-    return total_dice / num_pos_classes
+    nb_nonbackground_classes = output.shape[1]
+    for dim in nb_nonbackground_classes:
+        output_channel = output[:,dim,:,:,:]
+        target_channel = target[:,dim,:,:,:]
+        total_dice += channel_loss_fn(output=output_channel, target=target_channel, **kwargs)
+    return total_dice / nb_nonbackground_classes
+
+
+def dice_loss(output, target, binary_classification, **kwargs):
+    return ave_loss_over_channels(output=output, 
+                                  target=target, 
+                                  binary_classification=binary_classification, 
+                                  channel_loss_fn=channel_dice_loss, 
+                                  **kwargs)
+
+
+def log_dice_loss(output, target, binary_classification, **kwargs):
+    return ave_loss_over_channels(output=output, 
+                                  target=target, 
+                                  binary_classification=binary_classification, 
+                                  channel_loss_fn=channel_log_dice_loss, 
+                                  **kwargs)
+
 
 def MCD_loss(pm, gt, num_class):
     acc_dice_loss = 0
     for i in range(0,num_class):
-        acc_dice_loss += dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
+        acc_dice_loss += channel_dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
     acc_dice_loss/= num_class
     return acc_dice_loss
 
