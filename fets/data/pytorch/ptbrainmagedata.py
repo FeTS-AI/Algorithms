@@ -101,8 +101,9 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
         if class_label_map.get(0) is None:
             raise ValueError("class_label_map must contain the background zero class as a key")
         for key, label in class_label_map.items():
-            if key == 0 and label != 0:
-                raise ValueError("class_label_map must send zero to zero")
+            if key == 0:
+                if label != 0:
+                    raise ValueError("class_label_map must send zero to zero")
             elif label == 0:
                 raise ValueError("class_label_map is not allowed to send non-zero labels to zero")
         
