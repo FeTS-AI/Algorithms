@@ -36,7 +36,7 @@ def ave_loss_over_channels(output, target, binary_classification, channel_loss_f
         target = target[:,1:,:,:]
     total_dice = 0
     nb_nonbackground_classes = output.shape[1]
-    for dim in nb_nonbackground_classes:
+    for dim in range(nb_nonbackground_classes):
         output_channel = output[:,dim,:,:,:]
         target_channel = target[:,dim,:,:,:]
         total_dice += channel_loss_fn(output=output_channel, target=target_channel, **kwargs)
