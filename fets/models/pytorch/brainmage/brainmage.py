@@ -132,6 +132,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
     def train_batches(self, num_batches, use_tqdm=False):
 
+
         device = torch.device(self.device)
 
         ################################ PRINTING SOME STUFF ######################
@@ -151,6 +152,10 @@ class BrainMaGeModel(PyTorchFLModel):
         sys.stdout.flush()
 
         train_loader = self.data.get_train_loader()
+
+        if train_loader = []:
+            raise RuntimeError("Attempting to run training with an empty training loader.")
+
         if use_tqdm:
             train_loader = tqdm.tqdm(train_loader, desc="training for this round")
 
@@ -210,6 +215,10 @@ class BrainMaGeModel(PyTorchFLModel):
         total_dice = 0
         
         val_loader = self.data.get_val_loader()
+
+        if val_loader = []:
+            raise RuntimeError("Attempting to run training with an empty training loader.")
+
         if use_tqdm:
             val_loader = tqdm.tqdm(val_loader, desc="validate")
 
