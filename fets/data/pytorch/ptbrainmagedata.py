@@ -96,6 +96,17 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
         self.label_tags = label_tags
         # dictionary conversion of loaded pixel labels (example: turn all classes 1,2, 4 into a 1)
         self.class_label_map = class_label_map
+
+        # there is an assumption that the background class, 0, maps to 0 with no others doing so
+        if class_label_map.get(0) is None:
+            raise ValueError("class_label_map must contain the background zero class as a key")
+        for key, label in class_label_map.items():
+            if key == 0 and label != 0:
+                raise ValueError("class_label_map must send zero to zero")
+            elif label == 0:
+                raise ValueError("class_label_map is not allowed to send non-zero labels to zero")
+        
+
         self.n_classes = len(np.unique(list(class_label_map.values())))
 
         # if we are performing binary classification per pixel, we will disable one_hot conversion of labels
