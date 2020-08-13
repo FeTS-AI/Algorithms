@@ -204,11 +204,11 @@ class TumorSegmentationDataset(Dataset):
             label_array = self.rcrop(array=label_array, psize=self.psize, axis_offset=0)
             if self.binary_classification:
                 label_array = replace_old_labels_with_new(array=label_array, class_label_map=self.class_label_map)
+                label_array = np.expand_dims(label_array, axis=0)
             else:
                 label_array = one_hot(array=label_array, class_label_map=self.class_label_map)
             if self.use_case == "training":
                 feature_array, label_array = self.transform(img=feature_array, gt=label_array, img_dim=len(self.feature_modes))
-            label_array = np.expand_dims(label_array, axis=0)
             sample = {'features': feature_array, 'gt' : label_array}
         elif self.use_case == "inference":
             original_input_shape = list(feature_array.shape)
