@@ -132,6 +132,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
     def train_batches(self, num_batches, use_tqdm=False):
 
+
         device = torch.device(self.device)
 
         ################################ PRINTING SOME STUFF ######################
@@ -151,6 +152,10 @@ class BrainMaGeModel(PyTorchFLModel):
         sys.stdout.flush()
 
         train_loader = self.data.get_train_loader()
+
+        if train_loader == []:
+            raise RuntimeError("Attempting to run training with an empty training loader.")
+
         if use_tqdm:
             train_loader = tqdm.tqdm(train_loader, desc="training for this round")
 
@@ -188,7 +193,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     #Updating the weight values
                     self.optimizer.step()
                     #Pushing the dice to the cpu and only taking its value
-                    curr_loss = dice_loss(output[:,0,:,:,:].double(), mask[:,0,:,:,:].double()).cpu().data.item()
+                    curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                     #train_loss_list.append(loss.cpu().data.item())
                     total_loss+=curr_loss
                     self.lr_scheduler.step()
@@ -210,6 +215,10 @@ class BrainMaGeModel(PyTorchFLModel):
         total_dice = 0
         
         val_loader = self.data.get_val_loader()
+
+        if val_loader == []:
+            raise RuntimeError("Attempting to run training with an empty training loader.")
+
         if use_tqdm:
             val_loader = tqdm.tqdm(val_loader, desc="validate")
 
@@ -219,7 +228,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 mask = subject['gt']
                 features, mask = features.to(device), mask.to(device)
                 output = self(features.float())
-                curr_loss = dice_loss(output[:,0,:,:,:].double(), mask[:,0,:,:,:].double()).cpu().data.item()
+                curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                 total_loss+=curr_loss
                 #Computing the dice score 
                 curr_dice = 1 - curr_loss
