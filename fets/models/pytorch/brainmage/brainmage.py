@@ -116,6 +116,10 @@ class BrainMaGeModel(PyTorchFLModel):
 
         # TODO: To sync learning rate cycle, we assume single epoch per round and that the data loader is allowing partial batches!!!
         step_size = int(np.ceil(self.data.get_training_data_size()/self.data.batch_size))
+        if step_size == 0:
+            # This only happens when we have no training data so will not be using the optimizer
+            step_size = 1
+            print("\nNo training data is present, so cyclic optimizer being set with step size of 1.\n")
         clr = cyclical_lr(step_size, min_lr = 0.000001, max_lr = 0.001)
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, [clr])
         sys.stdout.flush()
