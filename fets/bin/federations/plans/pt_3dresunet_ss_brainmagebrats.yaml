@@ -37,9 +37,10 @@ data_object_init:
   init_kwargs: 
     batch_size: 1
     patch_size: [128,128,128]
-    feature_modes: ["_t1.nii", "_t2.nii", "_flair.nii", "_t1ce.nii"]
+    feature_modes: ["_t1.nii.gz", "_t2.nii.gz", "_flair.nii.gz", "_t1ce.nii.gz"]
     divisibility_factor: 16
     class_label_map: {0: 0, 1: 1}
+    label_tags: ['skull_stripper_seg.nii.gz']
 
 inference:
   allowed: True
