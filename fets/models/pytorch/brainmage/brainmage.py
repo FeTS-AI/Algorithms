@@ -166,6 +166,10 @@ class BrainMaGeModel(PyTorchFLModel):
         total_round_training_loss = 0
         batch_num = 0
 
+        # automatic mixed precision - https://pytorch.org/docs/stable/amp.html
+        if device.type == 'cuda':
+            scaler = torch.cuda.amp.GradScaler() 
+
         # set to "training" mode
         self.train()
         while batch_num < num_batches:
@@ -193,14 +197,21 @@ class BrainMaGeModel(PyTorchFLModel):
                     # Computing the loss
                     loss = self.loss_fn(output.double(), mask.double(),num_class=self.label_channels)
                     # Back Propagation for model to learn
-                    loss.backward()
-                    #Updating the weight values
-                    self.optimizer.step()
+                    if device.type == 'cuda': 
+                        scaler.scale(loss).backward() # [AMP] loss step
+                        scaler.step(self.optimizer) # [AMP] Updating the weight values
+                    else:
+                        loss.backward()
+                        #Updating the weight values
+                        self.optimizer.step()
                     #Pushing the dice to the cpu and only taking its value
                     curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                     #train_loss_list.append(loss.cpu().data.item())
                     total_loss+=curr_loss
                     self.lr_scheduler.step()
+
+                    if device.type == 'cuda': 
+                        scaler.update() # [AMP] update scale for next iteration
 
                     # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
                     #torch.cuda.empty_cache()
