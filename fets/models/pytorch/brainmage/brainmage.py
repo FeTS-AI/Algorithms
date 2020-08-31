@@ -221,7 +221,7 @@ class BrainMaGeModel(PyTorchFLModel):
         val_loader = self.data.get_val_loader()
 
         if val_loader == []:
-            raise RuntimeError("Attempting to run training with an empty training loader.")
+            raise RuntimeError("Attempting to run validation with an empty val loader.")
 
         if use_tqdm:
             val_loader = tqdm.tqdm(val_loader, desc="validate")
