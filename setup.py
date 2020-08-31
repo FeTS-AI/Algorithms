@@ -9,5 +9,5 @@ setup(name='fets',
                 'fets.models.pytorch.brainmage',
                 'fets.data',
                 'fets.data.pytorch'],
-      install_requires=['protobuf', 'pyyaml', 'grpcio', 'tqdm', 'coloredlogs', 'nibabel', 'sklearn', 'SimpleITK', 'pandas']
+      install_requires=['protobuf', 'pyyaml', 'grpcio', 'tqdm', 'coloredlogs', 'nibabel', 'sklearn', 'SimpleITK', 'pandas', 'torch>=1.6']
 )
