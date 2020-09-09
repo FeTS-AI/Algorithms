@@ -380,7 +380,7 @@ class DecodingModule(nn.Module):
         return x
 
 class out_conv(nn.Module):
-    def __init__(self, input_channels, output_channels, leakiness=1e-2, kernel_size=3,
+    def __init__(self, input_channels, output_channels, binary_classification=True, leakiness=1e-2, kernel_size=3,
         conv_bias=True, inst_norm_affine=True, res=True, lrelu_inplace=True):
         """[The Out convolution module to learn the information and use later]
         
@@ -391,6 +391,10 @@ class out_conv(nn.Module):
                                        the number of channels from downsample]
             output_channels {[int]} -- [the output number of channels, will det-
                                         -ermine the upcoming channels]
+            binary_classification {[bool]} -- signals that the per-pixel output is one
+                                              channel with values between 0 and 1, otherwise
+                                              is multi-channel over which a softmax should be
+                                              applied
         
         Keyword Arguments:
             kernel_size {number} -- [size of filter] (default: {3})
@@ -402,6 +406,7 @@ class out_conv(nn.Module):
                                     (default: {True})
         """
         nn.Module.__init__(self)
+        self.binary_classification = binary_classification
         self.lrelu_inplace = lrelu_inplace
         self.inst_norm_affine = inst_norm_affine
         self.conv_bias = conv_bias
@@ -445,7 +450,11 @@ class out_conv(nn.Module):
         if self.res == True:
             x = x + skip
         x = F.leaky_relu(self.in_3(x))
-        x = F.softmax(self.conv3(x),dim=1)
+        x = self.conv3(x)
+        if self.binary_classification:
+            x = torch.sigmoid(x)  
+        else:
+            x = F.softmax(x,dim=1)
         return x
  
 ''' 
