@@ -112,6 +112,11 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
 
         # if we are performing binary classification per pixel, we will disable one_hot conversion of labels
         self.binary_classification =  self.n_classes == 2
+
+        # there is an assumption that for binary classification, new classes are exactly 0 and 1
+        if self.binary_classification:
+            if set(class_label_map.values()) != set([0, 1]):
+                raise ValueError("When performing binary classification, the new labels should be 0 and 1")
     
 
         
