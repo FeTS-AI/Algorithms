@@ -21,6 +21,39 @@ from openfl import load_yaml
 from fets.data.pytorch import TumorSegmentationDataset, check_for_file_or_gzip_file, find_file_or_with_extension, new_labels_from_float_output
 from openfl.data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 
+import torchio
+from torchio.transforms import *
+from torchio import Image, Subject
+
+# data augmentations
+def mri_artifact(p=1):
+    return OneOf({RandomMotion(): 0.34, RandomGhosting(): 0.33, RandomSpike(): 0.33}, p=p)
+
+def spatial_transform(p=1):
+    return OneOf({RandomAffine(): 0.8, RandomElasticDeformation(): 0.2}, p=p)
+
+def bias(p=1):
+    return RandomBiasField(coefficients=0.5, order=3, p=p, seed=None)
+
+def blur(p=1):
+    return RandomBlur(std=(0., 4.), p=p, seed=None)
+
+def noise(p=1):
+    return RandomNoise(mean=0, std=(0, 0.25), p=p, seed=None)
+
+def swap(p=1):
+    return RandomSwap(patch_size=15, num_iterations=100, p=p, seed=None) 
+
+# Defining a dictionary - key is the string and the value is the augmentation object
+global_augs_dict = {
+    'spatial' : spatial_transform,
+    'kspace' : mri_artifact,
+    'bias' : bias,
+    'blur' : blur,
+    'noise' : noise,
+    'swap': swap
+}
+
 
 def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):
     dir_names = os.listdir(data_path)
@@ -133,18 +166,22 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
         if use_case == "training":
             dir_paths = self.train_dir_paths
             shuffle = True
+            augmentations = True
         elif use_case == "validation":
             dir_paths = self.val_dir_paths
             shuffle = False
+            augmentations = False
         elif use_case == "inference":
             dir_paths = self.inference_dir_paths
             shuffle = False
+            augmentations = False
         else:
             raise ValueError("Specified use case for data loader is not known.")
 
         if len(dir_paths) == 0:
             return []
         else:
+            os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
             dataset = TumorSegmentationDataset(dir_paths = dir_paths,
                                             feature_modes = self.feature_modes, 
                                             label_tags = self.label_tags, 
@@ -153,7 +190,27 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
                                             class_label_map = self.class_label_map,
                                             binary_classification = self.binary_classification, 
                                             divisibility_factor=self.divisibility_factor)
-            return DataLoader(dataset,batch_size= self.batch_size,shuffle=shuffle,num_workers=1)
+            
+            augmentation_list = [] # initialize augmentation list
+
+            if augmentations:
+                for aug in global_augs_dict:
+                    augmentation_list.append(global_augs_dict[aug])
+            
+            transform = Compose(augmentation_list)
+            
+            subjects_dataset = torchio.SubjectsDataset(dataset, transform=transform)
+
+            # see https://github.com/fepegar/torchio/issues/288 for details
+            patches_queue = torchio.Queue(subjects_dataset, 
+                                max_length=10,
+                                samples_per_volume=10, # change as needed
+                                sampler=torchio.data.UniformSampler(self.psize), 
+                                num_workers=1, 
+                                shuffle_subjects=shuffle,
+                                shuffle_patches=True, 
+                                verbose=False)  
+            return DataLoader(patches_queue,batch_size= self.batch_size,shuffle=shuffle,num_workers=1)
 
     
     def write_outputs(self, outputs, metadata, output_file_tag):
