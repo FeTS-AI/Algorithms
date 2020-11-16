@@ -15,10 +15,6 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 
-from openfl import split_tensor_dict_for_holdouts
-from openfl.proto.protoutils import deconstruct_proto, load_proto
-from openfl.tensor_transformation_pipelines import NoCompressionPipeline
-
 from fets.models.pytorch.brainmage.seg_modules import in_conv, DownsamplingModule, EncodingModule, InceptionModule, ResNetModule
 from fets.models.pytorch.brainmage.seg_modules import UpsamplingModule, DecodingModule,IncDownsamplingModule,IncConv
 from fets.models.pytorch.brainmage.seg_modules import out_conv, FCNUpsamplingModule, IncDropout,IncUpsamplingModule
@@ -65,29 +61,7 @@ class PyTorch3DResUNet(BrainMaGeModel):
             print(self)
 
         # send this to the device
-        self.to(device)
-
-    def restore_weights(self, model_weights_filepath, native_model_weights_filepath):
-        if model_weights_filepath is not None and native_model_weights_filepath is not None:
-            raise ValueError("Parameters model_weights_filename and native_model_weights_filepath are mutually exclusive.\nmodel_weights_file was set to {}\nnative_model_weights_filepath was set to {}".format(model_weights_filepath, native_model_weights_filepath))       
-
-        # if pbuf weights, we need to run deconstruct proto with a NoCompression pipeline
-        if model_weights_filepath is not None:
-            # record which tensors were held out from the saved proto
-            _, holdout_tensors = split_tensor_dict_for_holdouts(None, self.get_tensor_dict())
-
-            proto = load_proto(model_weights_filepath)
-            tensor_dict_from_proto = deconstruct_proto(proto, NoCompressionPipeline())
-
-            # restore any tensors held out from the proto
-            tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
-
-            self.set_tensor_dict(tensor_dict, with_opt_vars=False)
-            print("Poplulated initial model weights using weights file.") 
-        elif native_model_weights_filepath is not None:
-            # FIXME: Need for kwargs here?
-            self.load_native(native_model_weights_filepath)
-            print("Poplulated initial model weights using native weights file.")        
+        self.to(device)       
 
     def forward(self, x):
         x1 = self.ins(x)

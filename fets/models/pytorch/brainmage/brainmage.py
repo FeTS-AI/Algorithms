@@ -25,8 +25,11 @@ import torch
 import torch.optim as optim
 from torch.autograd import Variable
 
-from openfl import load_yaml
+from openfl import load_yaml, split_tensor_dict_for_holdouts
 from openfl.models.pytorch import PyTorchFLModel
+from openfl.proto.protoutils import deconstruct_proto, load_proto
+from openfl.tensor_transformation_pipelines import NoCompressionPipeline
+
 from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
@@ -57,7 +60,7 @@ class BrainMaGeModel(PyTorchFLModel):
                  device='cpu',
                  n_classes=2,
                  n_channels=4,
-                 psize=[128,128,128],
+                 psize=[128,128,128], 
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
         
@@ -123,6 +126,28 @@ class BrainMaGeModel(PyTorchFLModel):
         clr = cyclical_lr(step_size, min_lr = 0.000001, max_lr = 0.001)
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, [clr])
         sys.stdout.flush()
+
+    def restore_weights(self, model_weights_filepath, native_model_weights_filepath):
+        if model_weights_filepath is not None and native_model_weights_filepath is not None:
+            raise ValueError("Parameters model_weights_filename and native_model_weights_filepath are mutually exclusive.\nmodel_weights_file was set to {}\nnative_model_weights_filepath was set to {}".format(model_weights_filepath, native_model_weights_filepath))       
+
+        # if pbuf weights, we need to run deconstruct proto with a NoCompression pipeline
+        if model_weights_filepath is not None:
+            # record which tensors were held out from the saved proto
+            _, holdout_tensors = split_tensor_dict_for_holdouts(None, self.get_tensor_dict())
+
+            proto = load_proto(model_weights_filepath)
+            tensor_dict_from_proto = deconstruct_proto(proto, NoCompressionPipeline())
+
+            # restore any tensors held out from the proto
+            tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
+
+            self.set_tensor_dict(tensor_dict, with_opt_vars=False)
+            print("Populated initial model weights using weights file.") 
+        elif native_model_weights_filepath is not None:
+            # FIXME: Need for kwargs here?
+            self.load_native(native_model_weights_filepath)
+            print("Populated initial model weights using native weights file.") 
     
     def reset_opt_vars(self, **kwargs):
         self.init_optimizer(**kwargs)
