@@ -36,8 +36,14 @@ def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_tr
     return train_dir_paths, val_dir_paths
 
 
-def get_inference_dir_paths(data_path, feature_modes):
+def get_inference_dir_paths(data_path, feature_modes, inference_patient):
      inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
+     if inference_patient is not None:
+         new_paths = []
+         for path in inference_dir_paths:
+             if inference_patient in path:
+                 new_paths.append(path)
+         inference_dir_paths = new_paths
      inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, feature_modes=feature_modes)
      return inference_dir_paths
 
@@ -81,6 +87,7 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
                  class_label_map,
                  percent_train=0.8, 
                  label_tags = ["_seg_binary.nii", "_seg_binarized.nii", "_SegBinarized.nii", "_seg.nii"],
+                 inference_patient = None,
                  **kwargs):
 
         super().__init__(batch_size=batch_size)
@@ -125,7 +132,7 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
                                                                                label_tags=self.label_tags, 
                                                                                percent_train=percent_train)
         
-        self.inference_dir_paths = get_inference_dir_paths(data_path=data_path, feature_modes=self.feature_modes)
+        self.inference_dir_paths = get_inference_dir_paths(data_path=data_path, feature_modes=self.feature_modes, inference_patient=inference_patient)
 
         self.inference_loader = self.create_loader(use_case="inference")
         self.train_loader = self.create_loader(use_case="training")
