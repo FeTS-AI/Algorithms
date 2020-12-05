@@ -50,8 +50,6 @@ class FileListsDataset(Dataset):
             
             list_of_lists.append([t1_file, t1c_file, t2_file, flair_file])
 
-        print("I'm in the datset object, and here is what the list of lists looks like: ", list_of_lists)
-        
         return list_of_lists
 
 
