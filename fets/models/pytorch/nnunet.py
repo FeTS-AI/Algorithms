@@ -1,5 +1,9 @@
-# FIXME: Proper header including pointer to Fabian Isensee's nnUNet repo (appropriately addressing his lisence)
-# TODO: Fill in header
+"""
+This module contains code modified from a docker image found at: https://hub.docker.com/r/fabianisensee/isen2020, which is
+derived from code within the github repository: https://github.com/MIC-DKFZ/nnUNet, which is lisenced under 
+the following: [Apache License; Version 2.0, January 2004; http://www.apache.org/licenses/].
+"""
+# TODO: check that header is appropriate.
 
 
 

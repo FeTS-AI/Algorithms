@@ -1,6 +1,5 @@
-# The following code is modified from ...
-# FIXME: write header no Fabian pointers needed at this time, but maybe point to openFL (first functions)
-# TODO: modify header
+# The following code is modified from code within this same repository, as well as from https://github.com/IntelLabs/OpenFederatedLearning. 
+# TODO: check that header is sufficient.
 
 import os
 
