@@ -1,5 +1,10 @@
 """
-This module contains code modified from a docker image found at: https://hub.docker.com/r/fabianisensee/isen2020, which is
+This module helps run inference for the nnUNet model.
+Please read the following paper to learn more:
+Fabian Isensee, Paul F. Jäger, Simon A. A. Kohl, Jens Petersen, Klaus H. Maier-Hein 
+"Automated Design of Deep Learning Methods for Biomedical Image Segmentation" arXiv preprint arXiv:1904.08128 (2020).
+
+Code below is modified from a docker image found at: https://hub.docker.com/r/fabianisensee/isen2020, which is
 derived from code within the github repository: https://github.com/MIC-DKFZ/nnUNet, which is lisenced under 
 the following: [Apache License; Version 2.0, January 2004; http://www.apache.org/licenses/].
 """
