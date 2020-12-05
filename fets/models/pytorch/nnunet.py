@@ -1,4 +1,4 @@
-# FIXME: Proper header
+# FIXME: Proper header including pointer to Fabian Isensee's nnUNet repo (appropriately addressing his lisence)
 # TODO: Fill in header
 
 
@@ -56,7 +56,6 @@ class NNUnetInferenceOnlyModel():
                  *args, 
                  data,
                  native_model_weights_filepath,
-                 model_device='cpu', 
                  algorithm_identifier = "isen2020",
                  replace_with = 2, 
                  model_list = ['nnUNetTrainerV2BraTSRegions_DA3_BN_BD__nnUNetPlansv2.1_bs5',
@@ -75,7 +74,6 @@ class NNUnetInferenceOnlyModel():
         data (OpenFederatedLearning fldata object)  : Produces the inference data loader (validation and training loader can be empty)
         algorithm_identifier (string)               : Goes into the parameter file that is collected
         native_model_weights_filepath (string)      : Where to look for the serialized models
-        model_device (string)                       : TODO
         replace_with                                : Necrosis end non-enhancing tumor in Fabian's label convention (apply postprocessing before converting to brats labels!) 
         model_list (list of string)                 : Sub-models used during inference
         folds_list (list of iterable)               : Validation folds which led to model instances to consider during inference for
@@ -87,69 +85,63 @@ class NNUnetInferenceOnlyModel():
 
         self.data = data
         self.params_folder = native_model_weights_filepath 
-        self.model_device = model_device                 
         self.algorithm_identifier = algorithm_identifier           
         self.intermediate_out_folder = self.data.data_path 
         self.replace_with =  replace_with                             
         self.model_list = model_list               
         self.folds_list =  folds_list             
-        self.threshold = threshold
+        self.threshold = threshold 
     
     def run_inference_and_store_results(self,output_file_tag=''):
         output_file_base_name = output_file_tag + "_tumor_{}_class.nii.gz".format(self.algorithm_identifier)
-        # output_filename = output_file_tag + "tumor_{}_class.nii.gz".format(self.algorithm_identifier)
         
-        # This loop is only meant to have one iteration (provides all data inference paths)
-        for list_of_lists_inner_elements_as_tuples in self.data.inference_loader:
-            temp_list_of_lists = [[tuple[0] for tuple in l] for l in list_of_lists_inner_elements_as_tuples]
+        # passing only lists of length one to predict_cases
+        for inner_list in self.data.inference_loader:
+            list_of_lists = [inner_list]
+            
+            # output filenames (list of one) include information about patient folder name
+            # infering patient folder name from all file paths for a sanity check
+            # (should give the same answer)
+            folder_names = [fpath.split('/')[-2] for fpath in inner_list]
+            if set(folder_names) != set(folder_names[:1]):
+                raise RuntimeError('Patient file paths: {} were found to come from different folders against expectation.'.format(inner_list)) 
+            patient_folder_name = folder_names[0]
+            output_filename = patient_folder_name + output_file_base_name
+            
+            final_out_folder = join(self.intermediate_out_folder, patient_folder_name)
 
-            # will pass only one inner list at a time
-            for inner_list in temp_list_of_lists:
-                list_of_lists = [inner_list]
+            intermediate_output_folders = []
+            
+            for model_name, folds in zip(self.model_list, self.folds_list):
+                output_model = join(self.intermediate_out_folder, model_name)
+                intermediate_output_folders.append(output_model)
+                intermediate_output_filepaths = [join(output_model, output_filename)]
+                maybe_mkdir_p(output_model)
+                params_folder_model = join(self.params_folder, model_name)
                 
-                # output filenames (list of one) include information about patient folder name
-                # infering patient folder name from all file paths for a sanity check
-                # (should give the same answer)
-                folder_names = [fpath.split('/')[-2] for fpath in inner_list]
-                if set(folder_names) != set(folder_names[:1]):
-                    raise RuntimeError('Patient file paths: {} were found to come from different folders against expectation.'.format(inner_list)) 
-                patient_folder_name = folder_names[0]
-                output_filename = patient_folder_name + output_file_base_name
-                
-                final_out_folder = join(self.intermediate_out_folder, patient_folder_name)
+                predict_cases(model=params_folder_model, 
+                            list_of_lists=list_of_lists, 
+                            output_filenames=intermediate_output_filepaths, 
+                            folds=folds, 
+                            save_npz=True, 
+                            num_threads_preprocessing=1, 
+                            num_threads_nifti_save=1, 
+                            segs_from_prev_stage=None, 
+                            do_tta=True, 
+                            mixed_precision=True,
+                            overwrite_existing=True, 
+                            all_in_gpu=False, 
+                            step_size=0.5)
 
-                intermediate_output_folders = []
-                
-                for model_name, folds in zip(self.model_list, self.folds_list):
-                    output_model = join(self.intermediate_out_folder, model_name)
-                    intermediate_output_folders.append(output_model)
-                    intermediate_output_filepaths = [join(output_model, output_filename)]
-                    maybe_mkdir_p(output_model)
-                    params_folder_model = join(self.params_folder, model_name)
-                   
-                    predict_cases(model=params_folder_model, 
-                                list_of_lists=list_of_lists, 
-                                output_filenames=intermediate_output_filepaths, 
-                                folds=folds, 
-                                save_npz=True, 
-                                num_threads_preprocessing=1, 
-                                num_threads_nifti_save=1, 
-                                segs_from_prev_stage=None, 
-                                do_tta=True, 
-                                mixed_precision=True,
-                                overwrite_existing=True, 
-                                all_in_gpu=False, 
-                                step_size=0.5)
+            merge(folders=intermediate_output_folders, 
+                output_folder=final_out_folder, 
+                threads=1, 
+                override=True, 
+                postprocessing_file=None, 
+                store_npz=False)
 
-                merge(folders=intermediate_output_folders, 
-                    output_folder=final_out_folder, 
-                    threads=1, 
-                    override=True, 
-                    postprocessing_file=None, 
-                    store_npz=False)
-
-                f = join(final_out_folder, output_filename)
-                apply_brats_threshold(f, f, self.threshold, self.replace_with)
-                load_convert_save(f)
+            f = join(final_out_folder, output_filename)
+            apply_brats_threshold(f, f, self.threshold, self.replace_with)
+            load_convert_save(f)
 
         _ = [shutil.rmtree(i) for i in intermediate_output_folders]
