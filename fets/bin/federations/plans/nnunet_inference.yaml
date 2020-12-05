@@ -33,5 +33,5 @@ data_object_init:
 inference:
   allowed: True
   kwargs:
-    output_file_tag: 'testing_'
+    output_file_tag: ''
   
