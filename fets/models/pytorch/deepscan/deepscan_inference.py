@@ -47,7 +47,7 @@ class DeepSCANInferenceDataObject():
 
             yield nifti_orig, cropped, bbox, val_subject_volume, flair, t1, p.name
     
-    def save_nifty(self, data, pname):
+    def save_nifti(self, data, pname):
         filename = f'{pname}_{self.output_tag}_seg.nii.gz'
         nib.save(data, os.path.join(self.data_path, pname, filename))
 
@@ -147,7 +147,7 @@ class DeepSCANBraTS2020Inference():
 
 
         # nib.save(postprocessed_nifti, f'{out_dir}/tumor_SCAN2020_class.nii.gz')
-        self.data.save_nifty(postprocessed_nifti, pname)
+        self.data.save_nifti(postprocessed_nifti, pname)
 
         # for idx, name in zip([0,1,2],['enhance','core','whole']):
         #     unc_map = nib.Nifti1Image((uncertainty[:,:,:,idx]).astype(np.uint8), nifti_affine)
