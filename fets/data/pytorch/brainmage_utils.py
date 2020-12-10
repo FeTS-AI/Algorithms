@@ -16,13 +16,14 @@ import pandas as pd
 import os
 import random
 
-
-import scipy
 import SimpleITK as sitk
 import torch
 from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
+
+from batchgenerators.augmentations.spatial_transformations import augment_rot90, augment_mirroring
+from batchgenerators.augmentations.noise_augmentations import augment_gaussian_noise
 
 
 def completely_replace_entries(array, old_to_new):
@@ -127,25 +128,15 @@ class TumorSegmentationDataset(Dataset):
         return len(self.dir_paths)
 
     def transform(self,img ,gt, img_dim):
-        # TODO: Enable these trainsformations (by-passed for now)
-        return img,gt
-        if random.random()<0.12:
+        if random.random() < 1.12:
             img, gt = augment_rot90(img, gt)
             img, gt = img.copy(), gt.copy()         
-        if random.random()<0.12:
+        if random.random() < 1.12:
             img, gt = augment_mirroring(img, gt)
             img, gt = img.copy(), gt.copy()
-        if random.random()<0.12:
-            img = scipy.ndimage.rotate(img,45,axes=(2,1,0),reshape=False,mode='constant')
-            gt = scipy.ndimage.rotate(gt,45,axes=(2,1,0),reshape=False,order=0) 
-            img, gt = img.copy(), gt.copy() 
-        if random.random()<0.12:
-            img, gt = np.flipud(img).copy(),np.flipud(gt).copy()
-        if random.random() < 0.12:
-            img, gt = np.fliplr(img).copy(), np.fliplr(gt).copy()
-        if random.random() < 0.12:
-            for n in range(img_dim):
-                img[n] = gaussian(img[n],True,0,0.1)   
+        if random.random() < 1.12:
+            img = augment_gaussian_noise(img, noise_variance=(0, 0.1))
+            img = img.copy()
 
         return img,gt
 
@@ -164,7 +155,6 @@ class TumorSegmentationDataset(Dataset):
     
     @staticmethod    
     def random_slices(array, psize):
-        # find slices for randomly selected psize patch of array
         shape = array.shape
         slices = []
         for axis, length in enumerate(psize):
@@ -177,6 +167,14 @@ class TumorSegmentationDataset(Dataset):
     def crop(array, slices):
         return array[tuple(slices)]
 
+    @staticmethod
+    def normalize_by_channel(array):
+        # normalize to mean zero and std one per dimension along axis 0
+        stack = []
+        for array_slice in array:
+            stack.append((array_slice - np.mean(array_slice)) / np.std(array_slice))
+        return (np.stack(stack, axis=0))
+
     def __getitem__(self, index):
         dir_path = self.dir_paths[index]
         fname = os.path.basename(dir_path) # filename matches last dirname
@@ -187,9 +185,6 @@ class TumorSegmentationDataset(Dataset):
                 raise RuntimeError("Data sample directory missing a required image mode.")
             mode_image = sitk.ReadImage(fpath)
             mode_array = sitk.GetArrayFromImage(mode_image)
-
-            # normalize the features for this mode
-            mode_array = (mode_array - np.mean(mode_array)) / np.std(mode_array)
 
             feature_stack.append(mode_array) 
         feature_array = np.stack(feature_stack)
@@ -204,7 +199,13 @@ class TumorSegmentationDataset(Dataset):
                     break
             if label_image == None:
                 raise RuntimeError("Data sample directory (used for train or val) missing any label with provided tags.")
-            label_array = sitk.GetArrayFromImage(label_image) 
+            label_array = sitk.GetArrayFromImage(label_image)
+
+            # random crop the features and labels
+            slices = self.random_slices(label_array, psize=self.psize)
+            label_array = self.crop(label_array, slices=slices)
+            # for the feature array, we skip the first axis as it enumerates the modalities
+            feature_array = self.crop(feature_array, slices = [slice(None)] + slices)
 
             # random crop the features and labels
             slices = self.random_slices(label_array, psize=self.psize)
@@ -219,14 +220,16 @@ class TumorSegmentationDataset(Dataset):
                 label_array = one_hot(array=label_array, class_label_map=self.class_label_map)
             if self.use_case == "training":
                 feature_array, label_array = self.transform(img=feature_array, gt=label_array, img_dim=len(self.feature_modes))
-            sample = {'features': feature_array, 'gt' : label_array}
+            # normalize features
+            sample = {'features': self.normalize_by_channel(feature_array), 'gt' : label_array}
         elif self.use_case == "inference":
             original_input_shape = list(feature_array.shape)
             feature_array = self.zero_pad(feature_array)
-            sample = {'features': feature_array, 'metadata':  {"dir_path": dir_path, 
-                                                               "original_x_dim": original_input_shape[1], 
-                                                               "original_y_dim": original_input_shape[2], 
-                                                               "original_z_dim": original_input_shape[3]}}
+            # normalize features
+            sample = {'features': self.normalize_by_channel(feature_array), 'metadata':  {"dir_path": dir_path, 
+                                                                                          "original_x_dim": original_input_shape[1], 
+                                                                                          "original_y_dim": original_input_shape[2], 
+                                                                                          "original_z_dim": original_input_shape[3]}}
         else:
             raise ValueError("Value of TumorSegmentationDataset self.use_case is unexpected.")
         return sample
@@ -239,65 +242,9 @@ def augment_gamma(image):
     image = np.power(((image - min_image)/float(range_image + 1e-7)) , gamma)*range_image + min_image
     return image
 
-def normalize(image_array):
-    temp = image_array > 0
-    temp_image_array = image_array[temp]    
-    mu = np.mean(temp_image_array)
-    sig = np.std(temp_image_array)
-    image_array[temp] = (image_array[temp] - mu)/sig
-    return image_array
-
-def gaussian(img, is_training, mean, stddev):
-    l,b,h =  img.shape
-    noise = np.random.normal(mean, stddev, (l,b,h))
-    noise = noise.reshape(l,b,h)
-    img = img + noise 
-    return img  
 
 
 
-"""
-Below is modified from a Creation by @author: siddhesh on Sat Jun 29 20:20:11 2019
-
-"""
-
-def augment_rot90(sample_data, sample_seg, num_rot=(1, 2, 3), axes=(0, 1, 2)):
-    """
-    :param sample_data:
-    :param sample_seg:
-    :param num_rot: rotate by 90 degrees how often? must be tuple -> nom rot randomly chosen from that tuple
-    :param axes: around which axes will the rotation take place? two axes are chosen randomly from axes.
-    :return:
-    """
-    num_rot = np.random.choice(num_rot)
-    axes = np.random.choice(axes, size=2, replace=False)
-    axes.sort()
-    axes = [i + 1 for i in axes]
-    sample_data = np.rot90(sample_data, num_rot, axes)
-    if sample_seg is not None:
-        sample_seg = np.rot90(sample_seg, num_rot, axes)
-    return sample_data, sample_seg
-
-
-def augment_mirroring(sample_data, sample_seg=None, axes=(0, 1, 2)):
-    if (len(sample_data.shape) != 3) and (len(sample_data.shape) != 4):
-        raise Exception(
-            "Invalid dimension for sample_data and sample_seg. sample_data and sample_seg should be either "
-            "[channels, x, y] or [channels, x, y, z]")
-    if 0 in axes and np.random.uniform() < 0.5:
-        sample_data[:, :] = sample_data[:, ::-1]
-        if sample_seg is not None:
-            sample_seg[:, :] = sample_seg[:, ::-1]
-    if 1 in axes and np.random.uniform() < 0.5:
-        sample_data[:, :, :] = sample_data[:, :, ::-1]
-        if sample_seg is not None:
-            sample_seg[:, :, :] = sample_seg[:, :, ::-1]
-    if 2 in axes and len(sample_data.shape) == 4:
-        if np.random.uniform() < 0.5:
-            sample_data[:, :, :, :] = sample_data[:, :, :, ::-1]
-            if sample_seg is not None:
-                sample_seg[:, :, :, :] = sample_seg[:, :, :, ::-1]
-    return sample_data, sample_seg
 
 
 
