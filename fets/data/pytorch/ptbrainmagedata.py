@@ -44,11 +44,13 @@ def get_inference_dir_paths(data_path, feature_modes, inference_patient):
              if inference_patient in path:
                  new_paths.append(path)
          inference_dir_paths = new_paths
-     inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, feature_modes=feature_modes)
+     inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, 
+                                                        feature_modes=feature_modes, 
+                                                        inference_patient=inference_patient)
      return inference_dir_paths
 
 
-def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[]):
+def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[], inference_patient=None):
     filtered_dir_paths = []
     for path in dir_paths:
         dir_name = os.path.basename(path)
@@ -71,7 +73,7 @@ def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[]):
         
         if all_modes_present and have_needed_labels:
             filtered_dir_paths.append(path)
-        else:
+        elif inference_patient is not None:
             print("Excluding data directory: {}, as not all required files present.".format(dir_name))
     return filtered_dir_paths
 
