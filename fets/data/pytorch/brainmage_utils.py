@@ -113,6 +113,7 @@ def find_file_or_with_extension(path, extensions=['.gz']):
 class TumorSegmentationDataset(Dataset):
     def __init__(self, dir_paths, feature_modes, label_tags, use_case, psize, class_label_map, binary_classification, divisibility_factor=1):
         # use_case can be "training", "validation", or "inference"
+        # psize determines patch size (applies only to training and validation)
         self.dir_paths = dir_paths
         self.feature_modes = feature_modes
         self.label_tags = label_tags
@@ -162,16 +163,19 @@ class TumorSegmentationDataset(Dataset):
         return zero_padded_array       
     
     @staticmethod    
-    def rcrop(array,psize, axis_offset):
-        # axis_offset is used for feature arrays (it is 1 then)
+    def random_slices(array, psize):
+        # find slices for randomly selected psize patch of array
         shape = array.shape
+        slices = []
         for axis, length in enumerate(psize):
-            if shape[axis_offset + axis] > length:
-                shift = random.randint(0,shape[axis_offset+axis] - length)
-                slices = [slice(None) for _ in shape]
-                slices[axis_offset+axis] = slice(shift, shift + length)
-                array = array[tuple(slices)]
-        return array
+            if shape[axis] > length:
+                shift = random.randint(0,shape[axis] - length)
+                slices.append(slice(shift, shift + length))
+        return slices
+
+    @staticmethod    
+    def crop(array, slices):
+        return array[tuple(slices)]
 
     def __getitem__(self, index):
         dir_path = self.dir_paths[index]
@@ -191,7 +195,7 @@ class TumorSegmentationDataset(Dataset):
         feature_array = np.stack(feature_stack)
 
         if self.use_case in ["training", "validation"]:
-            feature_array = self.rcrop(array=feature_array, psize=self.psize, axis_offset=1) 
+            # get label array
             label_image = None
             for label_tag in self.label_tags:
                 fpath = find_file_or_with_extension(os.path.join(dir_path, fname + label_tag))
@@ -200,8 +204,14 @@ class TumorSegmentationDataset(Dataset):
                     break
             if label_image == None:
                 raise RuntimeError("Data sample directory (used for train or val) missing any label with provided tags.")
-            label_array = sitk.GetArrayFromImage(label_image)   
-            label_array = self.rcrop(array=label_array, psize=self.psize, axis_offset=0)
+            label_array = sitk.GetArrayFromImage(label_image) 
+
+            # random crop the features and labels
+            slices = self.random_slices(label_array, psize=self.psize)
+            label_array = self.crop(label_array, slices=slices)
+            # for the feature array, we skip the first axis as it enumerates the modalities
+            feature_array = self.crop(feature_array, slices = [slice(None)] + slices)
+
             if self.binary_classification:
                 label_array = replace_old_labels_with_new(array=label_array, class_label_map=self.class_label_map)
                 label_array = np.expand_dims(label_array, axis=0)
