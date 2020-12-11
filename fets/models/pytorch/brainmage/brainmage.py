@@ -27,7 +27,7 @@ from torch.autograd import Variable
 
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss
+from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, MCD_loss_no_background
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -58,6 +58,7 @@ class BrainMaGeModel(PyTorchFLModel):
                  n_classes=2,
                  n_channels=4,
                  psize=[128,128,128],
+                 smooth=1e-7,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
         
@@ -91,18 +92,23 @@ class BrainMaGeModel(PyTorchFLModel):
         else:
             self.label_channels = self.n_classes
         self.base_filters = base_filters
+        self.smooth = smooth
         self.which_model = self.__repr__()
         
         ############### CHOOSING THE LOSS FUNCTION ###################
         if self.which_loss == 'dc':
             self.loss_fn  = MCD_loss
-        if self.which_loss == 'dcce':
+        elif self.which_loss == 'dcce':
             self.loss_fn  = DCCE
-        if self.which_loss == 'ce':
+        elif self.which_loss == 'ce':
             self.loss_fn = CE
-        if self.which_loss == 'mse':
+        elif self.which_loss == 'mse':
             self.loss_fn = MCD_MSE_loss
-    
+        elif self.which_loss == 'dcnb':
+            self.loss_fn = MCD_loss_no_background
+        else:
+            raise ValueError('{} loss is not supported'.format(self.which_loss))
+
     def init_optimizer(self):
         if self.opt == 'sgd':
             self.optimizer = optim.SGD(self.parameters(),
@@ -110,10 +116,12 @@ class BrainMaGeModel(PyTorchFLModel):
                                        momentum = 0.9)
         if self.opt == 'adam':    
             self.optimizer = optim.Adam(self.parameters(), 
-                                   lr = self.learning_rate, 
-                                   betas = (0.9,0.999), 
-                                   weight_decay = 0.00005)
+                                        lr = self.learning_rate, 
+                                        betas = (0.9,0.999), 
+                                        weight_decay = 0.00005)
 
+        """
+        Temp turn off cyclic lr (also see line 205)
         # TODO: To sync learning rate cycle, we assume single epoch per round and that the data loader is allowing partial batches!!!
         step_size = int(np.ceil(self.data.get_training_data_size()/self.data.batch_size))
         if step_size == 0:
@@ -123,6 +131,7 @@ class BrainMaGeModel(PyTorchFLModel):
         clr = cyclical_lr(step_size, min_lr = 0.000001, max_lr = 0.001)
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, [clr])
         sys.stdout.flush()
+        """
     
     def reset_opt_vars(self, **kwargs):
         self.init_optimizer(**kwargs)
@@ -200,7 +209,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                     #train_loss_list.append(loss.cpu().data.item())
                     total_loss+=curr_loss
-                    self.lr_scheduler.step()
+                    # self.lr_scheduler.step()
 
                     # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
                     #torch.cuda.empty_cache()

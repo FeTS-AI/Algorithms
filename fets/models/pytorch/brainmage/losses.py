@@ -66,6 +66,13 @@ def MCD_loss(pm, gt, num_class):
     acc_dice_loss/= num_class
     return acc_dice_loss
 
+def MCD_loss_no_background(pm, gt, num_class):
+    acc_dice_loss = 0
+    for i in range(1,num_class):
+        acc_dice_loss += channel_dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
+    acc_dice_loss/= num_class
+    return acc_dice_loss
+
 # Setting up the Evaluation Metric
 def dice(out, target):
     smooth = 1e-7
