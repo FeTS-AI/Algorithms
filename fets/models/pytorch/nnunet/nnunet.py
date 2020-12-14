@@ -112,7 +112,7 @@ class NNUnetInferenceOnlyModel():
         self.threshold = threshold 
     
     def run_inference_and_store_results(self,output_file_tag=''):
-        output_file_base_name = output_file_tag + "_nnunet_seg.nii.gz")
+        output_file_base_name = output_file_tag + "_nnunet_seg.nii.gz"
         
         # passing only lists of length one to predict_cases
         for inner_list in self.data.inference_loader:
