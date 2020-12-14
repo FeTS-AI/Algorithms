@@ -1,6 +1,10 @@
-# TODO: ADD CITATIONS OF GITHUB (if applicable), DOCKERHUB???, Paper
+# Original DeepSCAN2020 code written and graciously provided by 
+# Richard McKinley (Inselgrupe AG, Support Centre for Advanced Neuroimaging)
 
-# Code lightly adapted from code provided generously by Richard McKinley
+# Dockerhub for the original model code is scan/brats2020
+
+# Lightly refactored for FeTS inference by Micah Sheller (Intel Corporation) 
+# Refactoring changes were primarily 1) removing training code and 2) changing from script to module (e.g. global variables to member variables). 
 
 import argparse
 import os
