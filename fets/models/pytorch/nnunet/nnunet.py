@@ -78,7 +78,6 @@ class NNUnetInferenceOnlyModel():
                  *args, 
                  data,
                  native_model_weights_filepath,
-                 algorithm_identifier = "isen2020",
                  replace_with = 2, 
                  model_list = ['nnUNetTrainerV2BraTSRegions_DA3_BN_BD__nnUNetPlansv2.1_bs5',
                                'nnUNetTrainerV2BraTSRegions_DA4_BN_BD__nnUNetPlansv2.1_bs5',
@@ -94,7 +93,6 @@ class NNUnetInferenceOnlyModel():
 
         Kwargs: 
         data (OpenFederatedLearning fldata object)  : Produces the inference data loader (validation and training loader can be empty)
-        algorithm_identifier (string)               : Goes into the parameter file that is collected
         native_model_weights_filepath (string)      : Where to look for the serialized models
         replace_with                                : Necrosis end non-enhancing tumor in Fabian's label convention (apply postprocessing before converting to brats labels!) 
         model_list (list of string)                 : Sub-models used during inference
@@ -107,7 +105,6 @@ class NNUnetInferenceOnlyModel():
 
         self.data = data
         self.params_folder = native_model_weights_filepath 
-        self.algorithm_identifier = algorithm_identifier           
         self.intermediate_out_folder = self.data.data_path 
         self.replace_with =  replace_with                             
         self.model_list = model_list               
@@ -115,7 +112,7 @@ class NNUnetInferenceOnlyModel():
         self.threshold = threshold 
     
     def run_inference_and_store_results(self,output_file_tag=''):
-        output_file_base_name = output_file_tag + "_tumor_{}_class_seg.nii.gz".format(self.algorithm_identifier)
+        output_file_base_name = output_file_tag + "_nnunet_seg.nii.gz")
         
         # passing only lists of length one to predict_cases
         for inner_list in self.data.inference_loader:
