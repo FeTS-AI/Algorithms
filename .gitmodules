@@ -1,0 +1,3 @@
+[submodule "GANDLF"]
+	path = GANDLF
+	url = https://github.com/FETS-AI/GANDLF.git
