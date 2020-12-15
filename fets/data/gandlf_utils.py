@@ -6,15 +6,15 @@ import sys
 import pandas as pd
 
 # TODO: Remove unneeded imports above
-
+# TODO: replace function below with one that will soon be pushed to GANDLF
 
 
 
 def get_dataframe_and_headers(file_data_full):
     """
-    get the dataframe of subject filenames, and (headers for this dataframe?)
+    get the dataframe of subject filenames, and the headers of this dataframe.
     Parameters: 
-    file_data_full (string): Data csv file that is used for training/inference
+    file_data_full (string): Data csv file containing paths to patient scans and labels (if appropriate)
  
   
     Returns: 
