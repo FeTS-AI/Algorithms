@@ -81,8 +81,8 @@ def MCD_loss(pm, gt, num_class, weights = None, **kwargs):
     for i in range(1,num_class):
         current_dice_loss = channel_dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
         if weights is not None:
-            currentDiceLoss = current_dice_loss * weights[i]
-        acc_dice_loss += currentDiceLoss
+            current_dice_loss = current_dice_loss * weights[i]
+        acc_dice_loss += current_dice_loss
     acc_dice_loss/= num_class
     return acc_dice_loss
 
