@@ -1,4 +1,4 @@
-# The following code is modified from https://github.com/CBICA/BrainMaGe which has the following lisence:
+# The following code is modified from https://github.com/CBICA/BrainMaGe which has the following license:
 
 # Copyright 2020 Center for Biomedical Image Computing and Analytics, University of Pennsylvania
 # Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
