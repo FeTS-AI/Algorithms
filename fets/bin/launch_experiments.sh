@@ -25,7 +25,7 @@ OFL_PATH="/home/edwardsb/repositories/be-OpenFederatedLearning"
 
 
 # resulting paths built relative to above
-RUNNING_LOG_DIR="${OFL_PATH}/bin/experiment_logs"
+RUNNING_LOG_DIR="${OFL_PATH}/bin/experiment_stdout_logs"
 PATH_TO_RUN_SIMULATION="${OFL_PATH}/bin"
 
 printf "${RUNNING_LOG_DIR}\n"
