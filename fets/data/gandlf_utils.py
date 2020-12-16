@@ -5,10 +5,7 @@ os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation reques
 import sys
 import pandas as pd
 
-# TODO: Remove unneeded imports above
 # TODO: replace function below with one that will soon be pushed to GANDLF
-
-
 
 def get_dataframe_and_headers(file_data_full):
     """
