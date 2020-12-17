@@ -135,7 +135,8 @@ class BrainMaGeModel(PyTorchFLModel):
         # TODO: remove print statements here
         print("Computing channel keys and train paths.")
         self.channel_keys, self.train_paths = self.get_channel_keys_and_train_paths()
-        
+        print("/nChannel keys: {}.format(channel_keys)\n")
+
         self.dice_penalty_dict = None
         if self.use_panalties:
             # prepare penalties dict
@@ -279,11 +280,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                         mask = subject['label'][torchio.DATA]
 
-                        # TODO: temporarily patching here (should be done in loader instead)
-                        slices = random_slices(mask, self.data.psize)
-                        mask = crop(mask, slices=slices)
-                        # for the feature array, we skip the first axis as it enumerates the modalities
-                        features = crop(features, slices=slices)
+                        print("\n\nTrain features with shape: {}\n".format(features.shape))
 
                         mask = one_hot(mask, self.data.class_list)
                         
@@ -344,11 +341,10 @@ class BrainMaGeModel(PyTorchFLModel):
                     features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                     mask = subject['label'][torchio.DATA]
 
-                    # TODO: temporarily patching here (should support through the loader instead)
-                    slices = random_slices(mask, self.data.psize)
-                    mask = crop(mask, slices=slices)
-                    # for the feature array, we skip the first axis as it enumerates the modalities
-                    features = crop(features, slices=slices)
+                    # TODO: For now we zero-pad the validation images to satisfy the divisibility criterion
+                    features = self.data.zero_pad(features)
+                    mask = self.data.zero_pad(mask)
+                    print("\n\nValidation features with shape: {}\n".format(features.shape))
                     
                     mask = one_hot(mask, self.data.class_list)
                     
