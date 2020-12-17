@@ -6,6 +6,7 @@
 import os
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
 import numpy as np
+import torch
 
 from torch.utils.data import DataLoader
 
@@ -137,7 +138,7 @@ class GANDLFData(object):
             else:
                 remainder = dim % self.divisibility_factor
                 new_shape.append(dim + self.divisibility_factor - remainder)
-        zero_padded_array = np.zeros(shape=new_shape)
+        zero_padded_array = torch.zeros(new_shape)
         slices = [slice(0,dim) for dim in current_shape]
         zero_padded_array[tuple(slices)] = array
         return zero_padded_array 
