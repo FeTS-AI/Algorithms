@@ -12,5 +12,5 @@ setup(name='fets',
                 'fets.data',
                 'fets.data.pytorch',
                 'GANDLF'],
-      install_requires=['protobuf', 'pyyaml', 'grpcio', 'tqdm', 'coloredlogs', 'nibabel', 'sklearn', 'SimpleITK', 'pandas', 'nnUNet==1.6.6', 'batchgenerators==0.21', 'opencv-python']
+      install_requires=['protobuf', 'grpcio', 'tqdm', 'coloredlogs', 'nibabel', 'sklearn', 'nnUNet==1.6.6', 'batchgenerators==0.21', 'opencv-python']
 )
