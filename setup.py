@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='fets',
-      version='0.0.1',
+      version='0.0.2',
       packages=['fets',
                 'fets.models',
                 'fets.models.pytorch',
