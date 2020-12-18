@@ -11,6 +11,9 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # This is a 3-clause BSD license as defined in https://opensource.org/licenses/BSD-3-Clause
 
+import os
+os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
+import torchio
 
 import numpy as np
 import time
@@ -330,22 +333,46 @@ class BrainMaGeModel(PyTorchFLModel):
                 if ('features' in subject.keys()) and ('gt' in subject.keys()):
                     features = subject['features']
                     mask = subject['gt']
+            
+                    features = features.to(device)
+                    output = self(features.float())
+                    
                 # this is when we are using gandlf loader   
                 else:
                     features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                     mask = subject['label'][torchio.DATA]
 
-                    # TODO: For now we zero-pad the validation images to satisfy the divisibility criterion
-                    features = self.data.zero_pad(features)
-                    mask = self.data.zero_pad(mask)
-                    print("\n\nValidation features with shape: {}\n".format(features.shape))
+                    # # TODO: For now we zero-pad the validation images to satisfy the divisibility criterion
+                    # features = self.data.zero_pad(features)
+                    # mask = self.data.zero_pad(mask)
+                    # print("\n\nValidation features with shape: {}\n".format(features.shape))
                     
-                    mask = one_hot(mask, self.data.class_list)
+                    ### aggregated mask validation
+                    subject_dict = {}
+                    for i in range(0, features.shape[1]): # 0 is batch
+                        subject_dict[str(i)] = torchio.Image(tensor = features[:,i,:,:,:], type=torchio.INTENSITY)
                     
-                features, mask = features.to(device), mask.to(device)
-                output = self(features.float())
+                    grid_sampler = torchio.inference.GridSampler(torchio.Subject(subject_dict), self.psize)
+                    patch_loader = torch.utils.data.DataLoader(grid_sampler, batch_size=1)
+                    aggregator = torchio.inference.GridAggregator(grid_sampler)
+
+                    for patches_batch in patch_loader:
+                        # concatenate the different modalities into a tensor
+                        image = torch.cat([patches_batch[str(i)][torchio.DATA] for i in range(0, features.shape[1])], dim=1)
+                        locations = patches_batch[torchio.LOCATION] # get location of patch
+                        image = image.to(device) # this should happen where "device" is defined
+                        pred_mask = self(image.float()) # this should happen where "model" is defined
+                        aggregator.add_batch(pred_mask, locations)
+                    output = aggregator.get_output_tensor() # this is the final mask
+                    output = output.unsqueeze(0) # increasing the number of dimension of the mask
+                    ### aggregated mask validation
+                
+                # one-hot encoding of ground truth
+                mask = one_hot(mask, self.data.class_list)
+                mask = mask.to(device)
                 curr_dice = average_dice_over_channels(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                 total_dice += curr_dice
+                    
         #Computing the average dice
         average_dice = total_dice/len(val_loader)
 
