@@ -12,7 +12,8 @@ def get_dataframe_and_headers(file_data_full):
     get the dataframe of subject filenames, and the headers of this dataframe.
     Parameters: 
     file_data_full (string): Data csv file containing paths to patient scans and labels (if appropriate)
- 
+    
+    Copy of GANDLF.utils.parseTrainingCSV
   
     Returns: 
         int: Description of return value 
