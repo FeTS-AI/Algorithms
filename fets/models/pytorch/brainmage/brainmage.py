@@ -21,17 +21,40 @@ import math
 from itertools import product
 
 import pandas as pd
+import random
+
+import torchio
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
 
+from GANDLF.utils import one_hot
+
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, MCD_loss_no_background
+from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
 # FIXME: Turn on data augmentation for training (double check all)
+
+
+ # TODO: Temporarily using patching in the model code (until GANDLF patching is plugged in) 
+def random_slices(array, psize):
+    # an example expected shape is: (1, 1, 240, 240, 155)
+    # the patch will not apply to the first two dimensions
+    shape = array.shape[2:]
+    slices = [slice(None), slice(None)]
+    for axis, length in enumerate(psize):
+        if shape[axis] > length:
+            shift = random.randint(0,shape[axis] - length)
+            slices.append(slice(shift, shift + length))
+    return slices
+
+
+def crop(array, slices):
+    return array[tuple(slices)]
+
 
 def cyclical_lr(stepsize, min_lr, max_lr):
     #Scaler : we can adapt this if we do not want the triangular LR
@@ -59,6 +82,7 @@ class BrainMaGeModel(PyTorchFLModel):
                  n_channels=4,
                  psize=[128,128,128],
                  smooth=1e-7,
+                 use_penalties=False,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
         
@@ -94,6 +118,7 @@ class BrainMaGeModel(PyTorchFLModel):
         self.base_filters = base_filters
         self.smooth = smooth
         self.which_model = self.__repr__()
+        self.use_panalties = use_penalties
         
         ############### CHOOSING THE LOSS FUNCTION ###################
         if self.which_loss == 'dc':
@@ -104,10 +129,17 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = CE
         elif self.which_loss == 'mse':
             self.loss_fn = MCD_MSE_loss
-        elif self.which_loss == 'dcnb':
-            self.loss_fn = MCD_loss_no_background
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
+
+        # TODO: remove print statements here
+        print("Computing channel keys and train paths.")
+        self.channel_keys, self.train_paths = self.get_channel_keys_and_train_paths()
+        
+        self.dice_penalty_dict = None
+        if self.use_panalties:
+            # prepare penalties dict
+            _, self.dice_penalty_dict = self.prep_penalties()
 
     def init_optimizer(self):
         if self.opt == 'sgd':
@@ -120,8 +152,6 @@ class BrainMaGeModel(PyTorchFLModel):
                                         betas = (0.9,0.999), 
                                         weight_decay = 0.00005)
 
-        """
-        Temp turn off cyclic lr (also see line 205)
         # TODO: To sync learning rate cycle, we assume single epoch per round and that the data loader is allowing partial batches!!!
         step_size = int(np.ceil(self.data.get_training_data_size()/self.data.batch_size))
         if step_size == 0:
@@ -131,7 +161,6 @@ class BrainMaGeModel(PyTorchFLModel):
         clr = cyclical_lr(step_size, min_lr = 0.000001, max_lr = 0.001)
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, [clr])
         sys.stdout.flush()
-        """
     
     def reset_opt_vars(self, **kwargs):
         self.init_optimizer(**kwargs)
@@ -143,9 +172,65 @@ class BrainMaGeModel(PyTorchFLModel):
     def forward(self, x):
         raise NotImplementedError()
 
+    def get_channel_keys_and_train_paths(self):
+        # Getting the channels for training and removing all the non numeric entries from the channels
+        train_paths = []
+        for subject in self.data.get_train_loader():
+            # Example subject keys: ['0', '1', '2', '3', 'label', 'index_ini']
+            # Example subject['0'] keys are: ['data', 'affine', 'path', 'stem', 'type']
+            train_paths.append(subject['0']['path'])
+          
+        # use last subject to inspect channel keys
+        channel_keys = []
+        for key in subject.keys():
+            if key.isnumeric():
+                channel_keys.append(key)
+
+        return channel_keys, train_paths
+
+    def prep_penalties(self):
+
+        # initialize without considering background
+        dice_weights_dict = {} # average for "weighted averaging"
+        dice_penalty_dict = {} # penalty for misclassification
+        for i in range(1, self.n_classes):
+            dice_weights_dict[i] = 0
+            dice_penalty_dict[i] = 0
+
+        penalty_loader = self.data.get_penalty_loader()
+        
+        # get the weights for use for dice loss
+        total_nonZeroVoxels = 0
+        
+        # dice penalty is calculated on the basis of the masks (processed here) and predicted labels
+        # iterate through full data (may differ from training data by not being cropped for example)
+        for subject in penalty_loader: 
+            # accumulate dice weights for each label
+            mask = subject['label'][torchio.DATA]
+            one_hot_mask = one_hot(mask, self.data.class_list)
+            for i in range(1, self.n_classes):
+                currentNumber = torch.nonzero(one_hot_mask[:,i,:,:,:], as_tuple=False).size(0)
+                dice_weights_dict[i] = dice_weights_dict[i] + currentNumber # class-specific non-zero voxels
+                total_nonZeroVoxels = total_nonZeroVoxels + currentNumber # total number of non-zero voxels to be considered
+
+        if total_nonZeroVoxels == 0:
+            raise RuntimeError('Trying to train on data where every label mask is background class only.')
+
+        # get the penalty values - dice_weights contains the overall number for each class in the training data
+        for i in range(1, self.n_classes):
+            penalty = total_nonZeroVoxels # start with the assumption that all the non-zero voxels make up the penalty
+            for j in range(1, self.n_classes):
+                if i != j: # for differing classes, subtract the number
+                    penalty = penalty - dice_penalty_dict[j]
+            
+            dice_penalty_dict[i] = penalty / total_nonZeroVoxels # this is to be used to weight the loss function
+        dice_weights_dict[i] = 1 - dice_weights_dict[i]# this can be used for weighted averaging
+
+        return dice_weights_dict, dice_penalty_dict
+
     def train_batches(self, num_batches, use_tqdm=False):
-
-
+        num_subjects = num_batches
+        
         device = torch.device(self.device)
 
         ################################ PRINTING SOME STUFF ######################
@@ -173,20 +258,35 @@ class BrainMaGeModel(PyTorchFLModel):
             train_loader = tqdm.tqdm(train_loader, desc="training for this round")
 
         total_round_training_loss = 0
-        batch_num = 0
+        subject_num = 0
 
         # set to "training" mode
         self.train()
-        while batch_num < num_batches:
+        while subject_num < num_subjects:
                        
             total_loss = 0
             for subject in train_loader:
-                if batch_num >= num_batches:
+                if subject_num >= num_subjects:
                     break
                 else:
                     # Load the subject and its ground truth
-                    features = subject['features']
-                    mask = subject['gt']
+                    # this is when we are using pt_brainmagedata
+                    if ('features' in subject.keys()) and ('gt' in subject.keys()):
+                        features = subject['features']
+                        mask = subject['gt']
+                    # this is when we are using gandlf loader   
+                    else:
+                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                        mask = subject['label'][torchio.DATA]
+
+                        # TODO: temporarily patching here (should be done in loader instead)
+                        slices = random_slices(mask, self.data.psize)
+                        mask = crop(mask, slices=slices)
+                        # for the feature array, we skip the first axis as it enumerates the modalities
+                        features = crop(features, slices=slices)
+
+                        mask = one_hot(mask, self.data.class_list)
+                        
                     # Loading features into device
                     features, mask = features.float().to(device), mask.float().to(device)
                     # TODO: Variable class is deprecated - parameteters to be given are the tensor, whether it requires grad and the function that created it   
@@ -200,31 +300,29 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                     output = self(features.float())
                     # Computing the loss
-                    loss = self.loss_fn(output.double(), mask.double(),num_class=self.label_channels)
+                    loss = self.loss_fn(output.double(), mask.double(),num_class=self.label_channels, weights=self.dice_penalty_dict)
                     # Back Propagation for model to learn
                     loss.backward()
                     #Updating the weight values
                     self.optimizer.step()
                     #Pushing the dice to the cpu and only taking its value
-                    curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
-                    #train_loss_list.append(loss.cpu().data.item())
-                    total_loss+=curr_loss
-                    # self.lr_scheduler.step()
+                    loss.cpu().data.item()
+                    total_loss += loss
+                    self.lr_scheduler.step()
 
                     # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
                     #torch.cuda.empty_cache()
 
-                    batch_num += 1
+                    subject_num += 1
 
             total_round_training_loss += total_loss
         # we return the average batch loss over all epochs trained this round
-        return total_round_training_loss / num_batches
+        return total_round_training_loss / num_subjects
 
     def validate(self, use_tqdm=False):
         device = torch.device(self.device)       
         self.eval()
         
-        total_loss = 0
         total_dice = 0
         
         val_loader = self.data.get_val_loader()
@@ -235,20 +333,31 @@ class BrainMaGeModel(PyTorchFLModel):
         if use_tqdm:
             val_loader = tqdm.tqdm(val_loader, desc="validate")
 
-        for batch_idx, (subject) in enumerate(val_loader):
+        for subject in val_loader:
             with torch.no_grad():
-                features = subject['features']
-                mask = subject['gt']
+                # this is when we are using pt_brainmagedata
+                if ('features' in subject.keys()) and ('gt' in subject.keys()):
+                    features = subject['features']
+                    mask = subject['gt']
+                # this is when we are using gandlf loader   
+                else:
+                    features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                    mask = subject['label'][torchio.DATA]
+
+                    # TODO: temporarily patching here (should support through the loader instead)
+                    slices = random_slices(mask, self.data.psize)
+                    mask = crop(mask, slices=slices)
+                    # for the feature array, we skip the first axis as it enumerates the modalities
+                    features = crop(features, slices=slices)
+                    
+                    mask = one_hot(mask, self.data.class_list)
+                    
                 features, mask = features.to(device), mask.to(device)
                 output = self(features.float())
-                curr_loss = dice_loss(output.double(), mask.double(), self.binary_classification).cpu().data.item()
-                total_loss+=curr_loss
-                #Computing the dice score 
-                curr_dice = 1 - curr_loss
-                #Computing the total dice
-                total_dice+= curr_dice
-                #Computing the average dice
-                average_dice = total_dice/(batch_idx + 1)
+                curr_dice = average_dice_over_channels(output.double(), mask.double(), self.binary_classification).cpu().data.item()
+                total_dice += curr_dice
+        #Computing the average dice
+        average_dice = total_dice/len(val_loader)
 
         return average_dice
 
