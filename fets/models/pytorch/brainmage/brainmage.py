@@ -132,9 +132,7 @@ class BrainMaGeModel(PyTorchFLModel):
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
-        # TODO: remove print statements here
-        print("Computing channel keys and train paths.")
-        self.channel_keys, self.train_paths = self.get_channel_keys_and_train_paths()
+        self.channel_keys= self.get_channel_keys()
         
         self.dice_penalty_dict = None
         if self.use_panalties:
@@ -172,13 +170,10 @@ class BrainMaGeModel(PyTorchFLModel):
     def forward(self, x):
         raise NotImplementedError()
 
-    def get_channel_keys_and_train_paths(self):
-        # Getting the channels for training and removing all the non numeric entries from the channels
-        train_paths = []
+    def get_channel_keys(self):
+        # Getting one training subject
         for subject in self.data.get_train_loader():
-            # Example subject keys: ['0', '1', '2', '3', 'label', 'index_ini']
-            # Example subject['0'] keys are: ['data', 'affine', 'path', 'stem', 'type']
-            train_paths.append(subject['0']['path'])
+            break
           
         # use last subject to inspect channel keys
         channel_keys = []
@@ -186,7 +181,7 @@ class BrainMaGeModel(PyTorchFLModel):
             if key.isnumeric():
                 channel_keys.append(key)
 
-        return channel_keys, train_paths
+        return channel_keys
 
     def prep_penalties(self):
 
@@ -279,11 +274,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                         mask = subject['label'][torchio.DATA]
 
-                        # TODO: temporarily patching here (should be done in loader instead)
-                        slices = random_slices(mask, self.data.psize)
-                        mask = crop(mask, slices=slices)
-                        # for the feature array, we skip the first axis as it enumerates the modalities
-                        features = crop(features, slices=slices)
+                        print("\n\nTrain features with shape: {}\n".format(features.shape))
 
                         mask = one_hot(mask, self.data.class_list)
                         
@@ -344,11 +335,10 @@ class BrainMaGeModel(PyTorchFLModel):
                     features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                     mask = subject['label'][torchio.DATA]
 
-                    # TODO: temporarily patching here (should support through the loader instead)
-                    slices = random_slices(mask, self.data.psize)
-                    mask = crop(mask, slices=slices)
-                    # for the feature array, we skip the first axis as it enumerates the modalities
-                    features = crop(features, slices=slices)
+                    # TODO: For now we zero-pad the validation images to satisfy the divisibility criterion
+                    features = self.data.zero_pad(features)
+                    mask = self.data.zero_pad(mask)
+                    print("\n\nValidation features with shape: {}\n".format(features.shape))
                     
                     mask = one_hot(mask, self.data.class_list)
                     
