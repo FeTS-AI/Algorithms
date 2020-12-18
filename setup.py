@@ -10,7 +10,6 @@ setup(name='fets',
                 'fets.models.pytorch.deepscan', 
                 'fets.models.pytorch.nnunet',
                 'fets.data',
-                'fets.data.pytorch',
-                'GANDLF'],
+                'fets.data.pytorch'],
       install_requires=['protobuf', 'grpcio', 'tqdm', 'coloredlogs', 'nibabel', 'sklearn', 'nnUNet==1.6.6', 'batchgenerators==0.21', 'opencv-python']
 )
