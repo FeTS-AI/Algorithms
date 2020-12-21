@@ -336,6 +336,7 @@ class BrainMaGeModel(PyTorchFLModel):
             
                     features = features.to(device)
                     output = self(features.float())
+                    output = output.cpu()
                     
                 # this is when we are using gandlf loader   
                 else:
@@ -369,7 +370,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 
                 # one-hot encoding of ground truth
                 mask = one_hot(mask, self.data.class_list)
-                mask = mask.to(device)
+                # mask = mask.to(device)
                 curr_dice = average_dice_over_channels(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                 total_dice += curr_dice
                     
