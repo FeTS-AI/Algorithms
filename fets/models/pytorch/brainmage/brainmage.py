@@ -267,6 +267,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 if subject_num >= num_subjects:
                     break
                 else:
+                    print('=== Memory (allocated; cached) : ', round(torch.cuda.memory_allocated(0)/1024**3, 1), '; ', round(torch.cuda.memory_reserved(0)/1024**3, 1))
                     # Load the subject and its ground truth
                     # this is when we are using pt_brainmagedata
                     if ('features' in subject.keys()) and ('gt' in subject.keys()):
@@ -282,7 +283,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         mask = one_hot(mask, self.data.class_list)
                         
                     # Loading features into device
-                    features, mask = features.float().to(device), mask.float().to(device)
+                    features, mask = features.double().to(device), mask.double().to(device)
                     # TODO: Variable class is deprecated - parameters to be given are the tensor, whether it requires grad and the function that created it   
                     features, mask = Variable(features, requires_grad = True), Variable(mask, requires_grad = True)
                     # Making sure that the optimizer has been reset
@@ -292,9 +293,9 @@ class BrainMaGeModel(PyTorchFLModel):
                     # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
                     #torch.cuda.empty_cache()
                     
-                    output = self(features.float())
+                    output = self(features.double())
                     # Computing the loss
-                    loss = self.loss_fn(output.float(), mask.float(),num_class=self.label_channels, weights=self.dice_penalty_dict)
+                    loss = self.loss_fn(output.double(), mask.double(),num_class=self.label_channels, weights=self.dice_penalty_dict)
                     # Back Propagation for model to learn
                     loss.backward()
                     #Updating the weight values
@@ -335,7 +336,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     mask = subject['gt']
             
                     features = features.to(device)
-                    output = self(features.float())
+                    output = self(features.double())
                     output = output.cpu()
                     
                 # this is when we are using gandlf loader   
@@ -362,7 +363,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         image = torch.cat([patches_batch[str(i)][torchio.DATA] for i in range(0, features.shape[1])], dim=1)
                         locations = patches_batch[torchio.LOCATION] # get location of patch
                         image = image.to(device) # this should happen where "device" is defined
-                        pred_mask = self(image.float()) # this should happen where "model" is defined
+                        pred_mask = self(image.double()) # this should happen where "model" is defined
                         aggregator.add_batch(pred_mask, locations)
                     output = aggregator.get_output_tensor() # this is the final mask
                     output = output.unsqueeze(0) # increasing the number of dimension of the mask
@@ -371,7 +372,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 # one-hot encoding of ground truth
                 mask = one_hot(mask, self.data.class_list)
                 # mask = mask.to(device)
-                curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
+                curr_dice = average_dice_over_channels(output.double(), mask.double(), self.binary_classification).cpu().data.item()
                 total_dice += curr_dice
                     
         #Computing the average dice
