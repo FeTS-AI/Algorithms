@@ -16,7 +16,7 @@ model_object_init:
   class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet
   init_kwargs:
     base_filters: 30
-    learning_rate: 1
+    learning_rate: 0.00001
     loss_function: dc
     opt: adam
     use_penalties: True
