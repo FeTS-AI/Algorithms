@@ -294,7 +294,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                     output = self(features.float())
                     # Computing the loss
-                    loss = self.loss_fn(output.double(), mask.double(),num_class=self.label_channels, weights=self.dice_penalty_dict)
+                    loss = self.loss_fn(output.float(), mask.float(),num_class=self.label_channels, weights=self.dice_penalty_dict)
                     # Back Propagation for model to learn
                     loss.backward()
                     #Updating the weight values
@@ -371,7 +371,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 # one-hot encoding of ground truth
                 mask = one_hot(mask, self.data.class_list)
                 # mask = mask.to(device)
-                curr_dice = average_dice_over_channels(output.double(), mask.double(), self.binary_classification).cpu().data.item()
+                curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
                 total_dice += curr_dice
                     
         #Computing the average dice
