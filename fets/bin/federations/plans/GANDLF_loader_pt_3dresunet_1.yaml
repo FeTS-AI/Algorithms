@@ -15,8 +15,8 @@ aggregator_object_init:
 model_object_init:
   class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet
   init_kwargs:
-    base_filters: 30
-    learning_rate: 0.00001
+    base_filters: 20
+    learning_rate: 0.0001
     loss_function: dc
     opt: adam
     use_penalties: True
