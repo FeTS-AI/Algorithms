@@ -285,7 +285,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     # Loading features into device
                     features, mask = features.float().to(device), mask.float().to(device)
                     # TODO: Variable class is deprecated - parameters to be given are the tensor, whether it requires grad and the function that created it   
-                    features, mask = Variable(features, requires_grad = True), Variable(mask, requires_grad = True)
+                    # features, mask = Variable(features, requires_grad = True), Variable(mask, requires_grad = True)
                     # Making sure that the optimizer has been reset
                     self.optimizer.zero_grad()
                     # Forward Propagation to get the output from the models
