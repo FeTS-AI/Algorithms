@@ -160,16 +160,18 @@ class BrainMaGeModel(PyTorchFLModel):
                                         betas = (0.9,0.999), 
                                         weight_decay = 0.00005)
 
-        # TODO: To sync learning rate cycle across collaborators, we assume the following:
-        # 1) partial batches are allowed by the data loaders (note use of np.ceil below)
-        # 2) each collaborator is training a set fraction of an epoch (rather than a set number of batches)
-        # If collaborators train for a set number of batches and we want to sync the scheduling, we need to set the cycle length 
-        # below according to a fixed number of batches rather than pin it to the size of training data
-        cycle_length = self.learning_rate_cycles_per_epoch * int(np.ceil(self.data.get_training_data_size()/self.data.batch_size))
+        # If this is removed, need to redo the cylce_length calculation below
+        assert self.data.batch_size == 1
+
+        # TODO: To sync learning rate cycle across collaborators, we assume each collaborator is training 
+        # a set fraction of an epoch (rather than a set number of batches) otherwise use batch_num based cycle length
+        cycle_length =  int(float(self.data.get_training_data_size()) / float(self.learning_rate_cycles_per_epoch))
         if cycle_length == 0:
-            # This only happens when we have no training data so will not be using the optimizer
-            cycle_length = 1
-            print("\nNo training data is present, so setting silly cyclic length for triangular learning rate schedule.\n")
+            if self.data.get_training_data_size == 0:
+                cycle_length = 1
+                print("\nNo training data is present, so setting silly cyclic length for scheduler.\n")
+            else:
+                raise ValueError("learning_rate_cycles_per_epoch is set to {} which cannot be greater than the number of training samples (which is {}).".format(self.learning_rate_cycles_per_epoch, self.data.get_training_data_size()))
 
         # inital learning rates (see above) are set to the max learning rate value
         # scheduling is performed thereafter by multiplying the optimizer rates
