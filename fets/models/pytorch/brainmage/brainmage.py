@@ -175,15 +175,17 @@ class BrainMaGeModel(PyTorchFLModel):
 
     def get_channel_keys(self):
         # Getting one training subject
-        for subject in self.data.get_train_loader():
-            break
-          
-        # use last subject to inspect channel keys
         channel_keys = []
-        for key in subject.keys():
-            if key.isnumeric():
-                channel_keys.append(key)
+        for subject in self.data.get_train_loader():
+            # break
+          
+            # use last subject to inspect channel keys
+            # channel_keys = []
+            for key in subject.keys():
+                if key.isnumeric():
+                    channel_keys.append(key)
 
+            return channel_keys
         return channel_keys
 
     def prep_penalties(self):
