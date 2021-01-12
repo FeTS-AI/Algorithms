@@ -59,17 +59,20 @@ def crop(array, slices):
     return array[tuple(slices)]
 
 
-def cyclical_lr(stepsize, min_lr, max_lr):
-    #Scaler : we can adapt this if we do not want the triangular LR
-    scaler = lambda x:1
-    #Lambda function to calculate the LR
-    lr_lambda = lambda it: max_lr - (max_lr - min_lr)*relative(it,stepsize)
-    #Additional function to see where on the cycle we are
-    def relative(it, stepsize):
-        cycle = math.floor(1+it/(2*stepsize))
-        x = abs(it/stepsize - 2*cycle + 1)
-        return max(0,(1-x))*scaler(cycle)
-    return lr_lambda
+def cyclical_lr(cycle_length, min_lr_multiplier, max_lr_multiplier):
+    # Lambda function to calculate what to multiply the inital learning rate by
+    # The beginning and end of the cycle result in highest multipliers (lowest at the center)
+    mult = lambda it: max_lr_multiplier * rel_dist(it, cycle_length) + min_lr_multiplier * (1 - rel_dist(it, cycle_length))
+    
+    def rel_dist(iteration, cycle_length):
+        # relative_distance from iteration to the center of the cycle
+        # equal to 1 at beggining of cycle and 0 right at the cycle center
+
+        # reduce the iteration to less than the cycle length
+        iteration = iteration % cycle_length
+        return 2 * abs(iteration - cycle_length/2.0) / cycle_length
+
+    return mult
 
 
 class BrainMaGeModel(PyTorchFLModel):
@@ -77,7 +80,9 @@ class BrainMaGeModel(PyTorchFLModel):
     def __init__(self, 
                  data, 
                  base_filters, 
-                 learning_rate, 
+                 min_learning_rate, 
+                 max_learning_rate,
+                 learning_rate_cycles_per_epoch,
                  loss_function, 
                  opt, 
                  device='cpu',
@@ -107,9 +112,11 @@ class BrainMaGeModel(PyTorchFLModel):
         else:
             self.psize = psize
 
-        # setting parameters as attributes
-        # training parameters
-        self.learning_rate = learning_rate
+        # we currently have a hard coded triangular learning rate scheduler
+        self.min_learning_rate = min_learning_rate
+        self.max_learning_rate = max_learning_rate
+        self.learning_rate_cycles_per_epoch = learning_rate_cycles_per_epoch
+
         self.which_loss = loss_function
         self.opt = opt
         # model parameters
@@ -145,23 +152,34 @@ class BrainMaGeModel(PyTorchFLModel):
     def init_optimizer(self):
         if self.opt == 'sgd':
             self.optimizer = optim.SGD(self.parameters(),
-                                       lr= self.learning_rate,
+                                       lr= self.max_learning_rate,
                                        momentum = 0.9)
         if self.opt == 'adam':    
             self.optimizer = optim.Adam(self.parameters(), 
-                                        lr = self.learning_rate, 
+                                        lr = self.max_learning_rate, 
                                         betas = (0.9,0.999), 
                                         weight_decay = 0.00005)
 
-        # TODO: To sync learning rate cycle, we assume single epoch per round and that the data loader is allowing partial batches!!!
-        step_size = int(np.ceil(self.data.get_training_data_size()/self.data.batch_size))
-        if step_size == 0:
+        # TODO: To sync learning rate cycle across collaborators, we assume the following:
+        # 1) partial batches are allowed by the data loaders (note use of np.ceil below)
+        # 2) each collaborator is training a set fraction of an epoch (rather than a set number of batches)
+        # If collaborators train for a set number of batches and we want to sync the scheduling, we need to set the cycle length 
+        # below according to a fixed number of batches rather than pin it to the size of training data
+        cycle_length = self.learning_rate_cycles_per_epoch * int(np.ceil(self.data.get_training_data_size()/self.data.batch_size))
+        if cycle_length == 0:
             # This only happens when we have no training data so will not be using the optimizer
-            step_size = 1
-            print("\nNo training data is present, so cyclic optimizer being set with step size of 1.\n")
-        clr = cyclical_lr(step_size, min_lr = 0.000001, max_lr = 0.001)
+            cycle_length = 1
+            print("\nNo training data is present, so setting silly cyclic length for triangular learning rate schedule.\n")
+
+        # inital learning rates (see above) are set to the max learning rate value
+        # scheduling is performed thereafter by multiplying the optimizer rates
+        min_lr_multiplier = float(self.min_learning_rate) / float(self.max_learning_rate)
+        max_lr_multiplier = 1.0
+        clr = cyclical_lr(cycle_length=cycle_length, 
+                          min_lr_multiplier = min_lr_multiplier, 
+                          max_lr_multiplier = max_lr_multiplier)
+        
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, [clr])
-        sys.stdout.flush()
     
     def reset_opt_vars(self, **kwargs):
         self.init_optimizer(**kwargs)
