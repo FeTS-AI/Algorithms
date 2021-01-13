@@ -21,6 +21,8 @@ from torch.nn import ModuleList
 from batchgenerators.augmentations.utils import pad_nd_image
 from scipy.ndimage import label
 
+from data import get_appropriate_file_paths_from_subject_dir
+
 
 # MSHELLER FIXME: Ensure parameters are being passed all the way through. Defaults could be being used erroneously.
 
@@ -37,11 +39,13 @@ class DeepSCANInferenceDataObject():
             patient_dirs = [p for p in patient_dirs if p.name == self.inference_patient]
 
         for p in patient_dirs:
-            nifti_orig = nib.load(os.path.join(p.path, f'{p.name}_flair.nii.gz'))
+            allFiles = get_appropriate_file_paths_from_subject_dir(p.path)
+
+            nifti_orig = nib.load(allFiles['FLAIR'])
             flair = np.copy(nifti_orig.get_fdata())
-            t1 = np.copy(nib.load(os.path.join(p.path, f'{p.name}_t1.nii.gz')).get_fdata())
-            t2 = np.copy(nib.load(os.path.join(p.path, f'{p.name}_t2.nii.gz')).get_fdata())
-            t1ce = np.copy(nib.load(os.path.join(p.path, f'{p.name}_t1ce.nii.gz')).get_fdata())
+            t1 = np.copy(nib.load(allFiles['T1']).get_fdata())
+            t2 = np.copy(nib.load(allFiles['T2']).get_fdata())
+            t1ce = np.copy(nib.load(allFiles['T1CE']).get_fdata())
             
             gt = np.zeros_like(flair)
 
