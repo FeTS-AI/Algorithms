@@ -24,6 +24,8 @@ from openfl.data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 from fets.data import get_appropriate_file_paths_from_subject_dir
 from fets.data.pytorch.file_lists_data import get_inference_dir_paths, remove_incomplete_data_paths, get_train_and_val_dir_paths
 
+from fets.data import get_appropriate_file_paths_from_subject_dir
+
 
 class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
 
@@ -140,7 +142,9 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
             image = sitk.GetImageFromArray(output)
               
             # get header info from an input image
-            input_image_fpath = os.path.join(dir_path, base_fname + self.feature_modes[0])
+            brats_modalities = ['T1', 'T2', 'FLAIR', 'T1CE']
+            allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
+            input_image_fpath = allFiles['T1']
             input_image_fpath = find_file_or_with_extension(input_image_fpath)
             input_image= sitk.ReadImage(input_image_fpath)
             image.CopyInformation(input_image)
