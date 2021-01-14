@@ -86,7 +86,7 @@ class BrainMaGeModel(PyTorchFLModel):
                  loss_function, 
                  opt, 
                  device='cpu',
-                 n_classes=2,
+                 n_classes=4,
                  n_channels=4,
                  psize=[128,128,128],
                  smooth=1e-7,
@@ -315,7 +315,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                     output = self(features.float())
                     # Computing the loss
-                    loss = self.loss_fn(output.float(), mask.float(),num_class=self.label_channels, weights=self.dice_penalty_dict)
+                    loss = self.loss_fn(output.float(), mask.float(),num_classes=self.label_channels, weights=self.dice_penalty_dict)
                     # Back Propagation for model to learn
                     loss.backward()
                     #Updating the weight values
