@@ -22,7 +22,7 @@ from fets.data.pytorch import TumorSegmentationDataset, check_for_file_or_gzip_f
 from openfl.data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 
 from fets.data import get_appropriate_file_paths_from_subject_dir
-from fets.data.pytorch.files_list_data import get_inference_dir_paths, remove_incomplete_data_paths, get_train_and_val_dir_paths
+from fets.data.pytorch.file_lists_data import get_inference_dir_paths, remove_incomplete_data_paths, get_train_and_val_dir_paths
 
 
 class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
