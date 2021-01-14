@@ -21,6 +21,8 @@ from openfl import load_yaml
 from fets.data.pytorch import TumorSegmentationDataset, check_for_file_or_gzip_file, find_file_or_with_extension, new_labels_from_float_output
 from openfl.data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 
+from fets.data import get_appropriate_file_paths_from_subject_dir
+
 
 def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):
     dir_names = os.listdir(data_path)
@@ -56,11 +58,15 @@ def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[], infere
         dir_name = os.path.basename(path)
         # check to that all features are present
         all_modes_present = True
-        for mode in feature_modes:
-            fpath = os.path.join(path, dir_name + mode)
-            if not check_for_file_or_gzip_file(fpath):
-                all_modes_present = False
-                break
+        allFiles = get_appropriate_file_paths_from_subject_dir(path)
+        all_modes_present = all(allFiles.values())
+
+        # for mode in feature_modes:
+        #     fpath = os.path.join(path, dir_name + mode)
+        #     if not os.path.exists(fpath):
+        #         print("Path not present: ", fpath)
+        #         all_modes_present = False
+        #         break
         if all_modes_present:
             have_needed_labels = False
             for label_tag in label_tags:
