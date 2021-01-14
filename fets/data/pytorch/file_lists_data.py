@@ -3,7 +3,7 @@
 
 import os
 
-from data import get_appropriate_file_paths_from_subject_dir
+from fets.data import get_appropriate_file_paths_from_subject_dir
 
 def get_inference_dir_paths(data_path, feature_modes, inference_patient):
      inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
@@ -23,12 +23,15 @@ def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[]):
         dir_name = os.path.basename(path)
         # check to that all features are present
         all_modes_present = True
-        for mode in feature_modes:
-            fpath = os.path.join(path, dir_name + mode)
-            if not os.path.exists(fpath):
-                print("Path not present: ", fpath)
-                all_modes_present = False
-                break
+        allFiles = get_appropriate_file_paths_from_subject_dir(path)
+        all_modes_present = all(allFiles.values())
+
+        # for mode in feature_modes:
+        #     fpath = os.path.join(path, dir_name + mode)
+        #     if not os.path.exists(fpath):
+        #         print("Path not present: ", fpath)
+        #         all_modes_present = False
+        #         break
         if all_modes_present:
             have_needed_labels = False
             for label_tag in label_tags:
