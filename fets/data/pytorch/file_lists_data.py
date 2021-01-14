@@ -3,7 +3,7 @@
 
 import os
 
-from data import get_appropriate_file_paths_from_subject_dir
+from fets.data import get_appropriate_file_paths_from_subject_dir
 
 def get_inference_dir_paths(data_path, feature_modes, inference_patient):
      inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
