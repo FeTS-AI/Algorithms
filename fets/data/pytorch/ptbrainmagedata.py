@@ -142,7 +142,6 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
             image = sitk.GetImageFromArray(output)
               
             # get header info from an input image
-            brats_modalities = ['T1', 'T2', 'FLAIR', 'T1CE']
             allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
             input_image_fpath = allFiles['T1']
             input_image_fpath = find_file_or_with_extension(input_image_fpath)

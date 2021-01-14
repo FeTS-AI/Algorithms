@@ -93,7 +93,8 @@ class FileListsData(object):
             # filename matches last directory name
 
             allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
-            
+            # The order below is intentionally different from that of the brats modalities list to match
+            # that used in nnunnet
             list_of_lists.append([allFiles['T1'], allFiles['T1CE'], allFiles['T2'], allFiles['FLAIR']])
 
         return list_of_lists

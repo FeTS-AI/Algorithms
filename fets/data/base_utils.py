@@ -1,5 +1,7 @@
 import os 
 
+# FIXME: Look to all usages and fix the fact that we are inspecting files multiple times
+#  for example we can optimize how we determine which patient directories to exlcude due to missing files 
 def get_appropriate_file_paths_from_subject_dir(dir_path):
     '''
     This function takes a subject directory as input and return a dictionary of the full paths to the modalities (BraTS-specific)
@@ -8,7 +10,9 @@ def get_appropriate_file_paths_from_subject_dir(dir_path):
 
     returnDict = {}
 
-    brats_modalities = ['T1CE', 'T1', 'T2', 'FLAIR']
+    # FIXME: There is more than one place the list below is defined
+    # Move to one location and ensure sync with feature_modes from the flplan
+    brats_modalities = ['T1', 'T2', 'FLAIR', 'T1CE']
     for mod in brats_modalities:
       returnDict[mod] = None
 

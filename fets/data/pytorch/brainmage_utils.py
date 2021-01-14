@@ -182,6 +182,10 @@ class TumorSegmentationDataset(Dataset):
         fname = os.path.basename(dir_path) # filename matches last dirname
         feature_stack =  []
         
+        # FIXME: There is more than one place the list below is defined
+        # changing the order of some definition instances (as below) effects order of channels
+        # the model sees !!!
+        # Move to one location and ensure sync with feature_modes from the flplan
         brats_modalities = ['T1', 'T2', 'FLAIR', 'T1CE']
         allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
         for mode in brats_modalities:
