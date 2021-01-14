@@ -3,6 +3,7 @@
 
 import os
 
+from ..base_utils import get_appropriate_file_paths_from_subject_dir
 
 def get_inference_dir_paths(data_path, feature_modes, inference_patient):
      inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
@@ -72,14 +73,10 @@ class FileListsData(object):
         list_of_lists = []
         for dir_path in dir_paths:
             # filename matches last directory name
-            file_basename = os.path.basename(dir_path) 
+
+            allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
             
-            t1_file = os.path.join(dir_path, file_basename + "_t1.nii.gz")
-            t1c_file = os.path.join(dir_path, file_basename + "_t1ce.nii.gz")
-            t2_file = os.path.join(dir_path, file_basename + "_t2.nii.gz")
-            flair_file = os.path.join(dir_path, file_basename + "_flair.nii.gz")
-            
-            list_of_lists.append([t1_file, t1c_file, t2_file, flair_file])
+            list_of_lists.append([allFiles['T1'], allFiles['T1CE'], allFiles['T2'], allFiles['FLAIR']])
 
         return list_of_lists
 
