@@ -22,6 +22,7 @@ from fets.data.pytorch import TumorSegmentationDataset, check_for_file_or_gzip_f
 from openfl.data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 
 from fets.data import get_appropriate_file_paths_from_subject_dir
+from fets.data.pytorch.files_list_data import get_inference_dir_paths, remove_incomplete_data_paths, get_train_and_val_dir_paths
 
 
 def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):
@@ -36,52 +37,6 @@ def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_tr
     if set(train_dir_paths).union(set(val_dir_paths)) != set(dir_paths):
         raise ValueError("You have sharded data as to drop some or duplicate.")
     return train_dir_paths, val_dir_paths
-
-
-def get_inference_dir_paths(data_path, feature_modes, inference_patient):
-     inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
-     if inference_patient is not None:
-         new_paths = []
-         for path in inference_dir_paths:
-             if inference_patient in path:
-                 new_paths.append(path)
-         inference_dir_paths = new_paths
-     inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, 
-                                                        feature_modes=feature_modes, 
-                                                        inference_patient=inference_patient)
-     return inference_dir_paths
-
-
-def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[], inference_patient=None):
-    filtered_dir_paths = []
-    for path in dir_paths:
-        dir_name = os.path.basename(path)
-        # check to that all features are present
-        all_modes_present = True
-        allFiles = get_appropriate_file_paths_from_subject_dir(path)
-        all_modes_present = all(allFiles.values())
-
-        # for mode in feature_modes:
-        #     fpath = os.path.join(path, dir_name + mode)
-        #     if not os.path.exists(fpath):
-        #         print("Path not present: ", fpath)
-        #         all_modes_present = False
-        #         break
-        if all_modes_present:
-            have_needed_labels = False
-            for label_tag in label_tags:
-                fpath = os.path.join(path, dir_name + label_tag)
-                if check_for_file_or_gzip_file(fpath):
-                    have_needed_labels = True
-                    break
-            if label_tags == []:
-                have_needed_labels = True
-        
-        if all_modes_present and have_needed_labels:
-            filtered_dir_paths.append(path)
-        elif inference_patient is not None:
-            print("Excluding data directory: {}, as not all required files present.".format(dir_name))
-    return filtered_dir_paths
 
 
 class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
