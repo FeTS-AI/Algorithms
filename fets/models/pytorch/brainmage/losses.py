@@ -21,13 +21,30 @@ def channel_dice_loss(output, target, smooth=1e-7):
     return 1 - ((2. * intersection + smooth) / (output.sum() + target.sum() + smooth))
 
 
-
 def channel_log_dice_loss(output, target, smooth=1e-7):
     output = output.contiguous().view(-1)
     target = target.contiguous().view(-1)
     intersection = (output * target).sum()
     return -np.log((2. * intersection + smooth) / (output.sum() + target.sum() + smooth))
 
+def channel_dice(output, target, smooth=1e-7, **kwargs):
+    output = output.contiguous().view(-1)
+    target = target.contiguous().view(-1)
+    intersection = (output * target).sum()
+    return (2. * intersection + smooth) / (output.sum() + target.sum() + smooth)
+
+def average_dice_over_channels(output, target, binary_classification, **kwargs):
+    if not binary_classification:
+        # we will not count the background class (here in dim=0 of axis=1)
+        output = output[:,1:,:,:]
+        target = target[:,1:,:,:]
+    total_dice = 0
+    nb_nonbackground_classes = output.shape[1]
+    for dim in range(nb_nonbackground_classes):
+        output_channel = output[:,dim,:,:,:]
+        target_channel = target[:,dim,:,:,:]
+        total_dice += channel_dice(output=output_channel, target=target_channel, **kwargs)
+    return total_dice / nb_nonbackground_classes
 
 def ave_loss_over_channels(output, target, binary_classification, channel_loss_fn, **kwargs):
     if not binary_classification:
@@ -59,19 +76,16 @@ def log_dice_loss(output, target, binary_classification, **kwargs):
                                   **kwargs)
 
 
-def MCD_loss(pm, gt, num_class):
+def MCD_loss(pm, gt, num_class, weights = None, **kwargs):
     acc_dice_loss = 0
-    for i in range(0,num_class):
-        acc_dice_loss += channel_dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
+    for i in range(1,num_class):
+        current_dice_loss = channel_dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
+        if weights is not None:
+            current_dice_loss = current_dice_loss * weights[i]
+        acc_dice_loss += current_dice_loss
     acc_dice_loss/= num_class
     return acc_dice_loss
 
-def MCD_loss_no_background(pm, gt, num_class):
-    acc_dice_loss = 0
-    for i in range(1,num_class):
-        acc_dice_loss += channel_dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
-    acc_dice_loss/= num_class
-    return acc_dice_loss
 
 # Setting up the Evaluation Metric
 def dice(out, target):
