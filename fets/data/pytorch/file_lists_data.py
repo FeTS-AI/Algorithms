@@ -48,7 +48,11 @@ def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[]):
         #         all_modes_present = False
         #         break
         if all_modes_present:
-            have_needed_labels = False
+            if len(label_tags) == 0:
+                have_needed_labels = True
+            else:
+                have_needed_labels = False
+                
             for label_tag in label_tags:
                 fpath = os.path.join(path, dir_name + label_tag)
                 if os.path.exists(fpath):
