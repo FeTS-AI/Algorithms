@@ -180,13 +180,14 @@ class BrainMaGeModel(PyTorchFLModel):
             # Example subject['0'] keys are: ['data', 'affine', 'path', 'stem', 'type']
             train_paths.append(subject['0']['path'])
           
-        # use last subject to inspect channel keys
-        channel_keys = []
-        for key in subject.keys():
-            if key.isnumeric():
-                channel_keys.append(key)
+            # use last subject to inspect channel keys
+            channel_keys = []
+            for key in subject.keys():
+                if key.isnumeric():
+                    channel_keys.append(key)
 
-        return channel_keys, train_paths
+            return channel_keys, train_paths
+        return None, None
 
     def prep_penalties(self):
 
