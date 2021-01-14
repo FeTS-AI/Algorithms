@@ -25,20 +25,6 @@ from fets.data import get_appropriate_file_paths_from_subject_dir
 from fets.data.pytorch.files_list_data import get_inference_dir_paths, remove_incomplete_data_paths, get_train_and_val_dir_paths
 
 
-def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):
-    dir_names = os.listdir(data_path)
-    dir_paths = [os.path.join(data_path, dir_name) for dir_name in dir_names]
-    dir_paths = remove_incomplete_data_paths(dir_paths=dir_paths, 
-                                             feature_modes=feature_modes, 
-                                             label_tags=label_tags)
-    dir_paths = np.random.permutation(dir_paths)
-    index_cut = int(np.ceil(len(dir_paths) * percent_train))
-    train_dir_paths, val_dir_paths = dir_paths[:index_cut], dir_paths[index_cut:]
-    if set(train_dir_paths).union(set(val_dir_paths)) != set(dir_paths):
-        raise ValueError("You have sharded data as to drop some or duplicate.")
-    return train_dir_paths, val_dir_paths
-
-
 class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
 
     def __init__(self, 
