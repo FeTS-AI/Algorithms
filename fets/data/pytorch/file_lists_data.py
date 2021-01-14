@@ -2,6 +2,7 @@
 # TODO: check that header is sufficient.
 
 import os
+import numpy as np
 
 from fets.data import get_appropriate_file_paths_from_subject_dir
 
