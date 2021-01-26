@@ -197,9 +197,9 @@ def plot_convergence_curve(round_nums,
     _ = ax.set_xlabel('Round', fontsize=text_font_size)
     _ = ax.set_ylabel('DICE', fontsize=text_font_size)
     if info == 'val':
-        _ = ax.set(xlim=(0, np.amax(round_nums) + 10), ylim=(0, 0.6))
+        _ = ax.set(xlim=(0, np.amax(round_nums) + 10))
     elif info == 'loss':
-        _ = ax.set(xlim=(0, np.amax(round_nums) + 10), ylim=(0, 0.8))
+        _ = ax.set(xlim=(0, np.amax(round_nums) + 10))
     _ = ax.tick_params(axis='x', labelsize=label_size)
     _ = ax.tick_params(axis='y', labelsize=label_size)
     _ = figure.show()
