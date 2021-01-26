@@ -21,61 +21,10 @@ from openfl import load_yaml
 from fets.data.pytorch import TumorSegmentationDataset, check_for_file_or_gzip_file, find_file_or_with_extension, new_labels_from_float_output
 from openfl.data.pytorch.ptfldata_inmemory import PyTorchFLDataInMemory
 
+from fets.data import get_appropriate_file_paths_from_subject_dir
+from fets.data.pytorch.file_lists_data import get_inference_dir_paths, remove_incomplete_data_paths, get_train_and_val_dir_paths
 
-def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):
-    dir_names = os.listdir(data_path)
-    dir_paths = [os.path.join(data_path, dir_name) for dir_name in dir_names]
-    dir_paths = remove_incomplete_data_paths(dir_paths=dir_paths, 
-                                             feature_modes=feature_modes, 
-                                             label_tags=label_tags)
-    dir_paths = np.random.permutation(dir_paths)
-    index_cut = int(np.ceil(len(dir_paths) * percent_train))
-    train_dir_paths, val_dir_paths = dir_paths[:index_cut], dir_paths[index_cut:]
-    if set(train_dir_paths).union(set(val_dir_paths)) != set(dir_paths):
-        raise ValueError("You have sharded data as to drop some or duplicate.")
-    return train_dir_paths, val_dir_paths
-
-
-def get_inference_dir_paths(data_path, feature_modes, inference_patient):
-     inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
-     if inference_patient is not None:
-         new_paths = []
-         for path in inference_dir_paths:
-             if inference_patient in path:
-                 new_paths.append(path)
-         inference_dir_paths = new_paths
-     inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, 
-                                                        feature_modes=feature_modes, 
-                                                        inference_patient=inference_patient)
-     return inference_dir_paths
-
-
-def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[], inference_patient=None):
-    filtered_dir_paths = []
-    for path in dir_paths:
-        dir_name = os.path.basename(path)
-        # check to that all features are present
-        all_modes_present = True
-        for mode in feature_modes:
-            fpath = os.path.join(path, dir_name + mode)
-            if not check_for_file_or_gzip_file(fpath):
-                all_modes_present = False
-                break
-        if all_modes_present:
-            have_needed_labels = False
-            for label_tag in label_tags:
-                fpath = os.path.join(path, dir_name + label_tag)
-                if check_for_file_or_gzip_file(fpath):
-                    have_needed_labels = True
-                    break
-            if label_tags == []:
-                have_needed_labels = True
-        
-        if all_modes_present and have_needed_labels:
-            filtered_dir_paths.append(path)
-        elif inference_patient is not None:
-            print("Excluding data directory: {}, as not all required files present.".format(dir_name))
-    return filtered_dir_paths
+from fets.data import get_appropriate_file_paths_from_subject_dir
 
 
 class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
@@ -193,7 +142,8 @@ class PyTorchBrainMaGeData(PyTorchFLDataInMemory):
             image = sitk.GetImageFromArray(output)
               
             # get header info from an input image
-            input_image_fpath = os.path.join(dir_path, base_fname + self.feature_modes[0])
+            allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
+            input_image_fpath = allFiles['T1']
             input_image_fpath = find_file_or_with_extension(input_image_fpath)
             input_image= sitk.ReadImage(input_image_fpath)
             image.CopyInformation(input_image)

@@ -2,19 +2,34 @@
 # TODO: check that header is sufficient.
 
 import os
+import numpy as np
 
-from ..base_utils import get_appropriate_file_paths_from_subject_dir
+from fets.data import get_appropriate_file_paths_from_subject_dir
 
 def get_inference_dir_paths(data_path, feature_modes, inference_patient):
-     inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
-     if inference_patient is not None:
-         new_paths = []
-         for path in inference_dir_paths:
-             if inference_patient in path:
-                 new_paths.append(path)
-         inference_dir_paths = new_paths
-     inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, feature_modes=feature_modes)
-     return inference_dir_paths
+    inference_dir_paths = [os.path.join(data_path,dir_name) for dir_name in os.listdir(data_path)]
+    if inference_patient is not None:
+        new_paths = []
+        for path in inference_dir_paths:
+            if inference_patient in path:
+                new_paths.append(path)
+        inference_dir_paths = new_paths
+    inference_dir_paths = remove_incomplete_data_paths(dir_paths = inference_dir_paths, feature_modes=feature_modes)
+    return inference_dir_paths
+
+
+def get_train_and_val_dir_paths(data_path, feature_modes, label_tags, percent_train):
+    dir_names = os.listdir(data_path)
+    dir_paths = [os.path.join(data_path, dir_name) for dir_name in dir_names]
+    dir_paths = remove_incomplete_data_paths(dir_paths=dir_paths, 
+                                            feature_modes=feature_modes, 
+                                            label_tags=label_tags)
+    dir_paths = np.random.permutation(dir_paths)
+    index_cut = int(np.ceil(len(dir_paths) * percent_train))
+    train_dir_paths, val_dir_paths = dir_paths[:index_cut], dir_paths[index_cut:]
+    if set(train_dir_paths).union(set(val_dir_paths)) != set(dir_paths):
+        raise ValueError("You have sharded data as to drop some or duplicate.")
+    return train_dir_paths, val_dir_paths
 
 
 def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[]):
@@ -23,12 +38,15 @@ def remove_incomplete_data_paths(dir_paths, feature_modes, label_tags=[]):
         dir_name = os.path.basename(path)
         # check to that all features are present
         all_modes_present = True
-        for mode in feature_modes:
-            fpath = os.path.join(path, dir_name + mode)
-            if not os.path.exists(fpath):
-                print("Path not present: ", fpath)
-                all_modes_present = False
-                break
+        allFiles = get_appropriate_file_paths_from_subject_dir(path)
+        all_modes_present = all(allFiles.values())
+
+        # for mode in feature_modes:
+        #     fpath = os.path.join(path, dir_name + mode)
+        #     if not os.path.exists(fpath):
+        #         print("Path not present: ", fpath)
+        #         all_modes_present = False
+        #         break
         if all_modes_present:
             have_needed_labels = False
             for label_tag in label_tags:
@@ -54,10 +72,10 @@ class FileListsData(object):
     """
 
     def __init__(self, 
-                 data_path,
-                 feature_modes=["_t1.nii.gz", "_t2.nii.gz", "_flair.nii.gz", "_t1ce.nii.gz"],
-                 inference_patient = None,
-                 **kwargs):
+                data_path,
+                feature_modes=["_t1.nii.gz", "_t2.nii.gz", "_flair.nii.gz", "_t1ce.nii.gz"],
+                inference_patient = None,
+                **kwargs):
 
 
         self.data_path = data_path
@@ -66,7 +84,7 @@ class FileListsData(object):
         self.inference_dir_paths = get_inference_dir_paths(data_path=self.data_path, feature_modes=feature_modes, inference_patient=inference_patient)
 
         self.inference_loader = self.get_inference_loader()
-   
+
     def get_inference_loader(self):
         dir_paths = self.inference_dir_paths
         
@@ -75,7 +93,8 @@ class FileListsData(object):
             # filename matches last directory name
 
             allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
-            
+            # The order below is intentionally different from that of the brats modalities list to match
+            # that used in nnunnet
             list_of_lists.append([allFiles['T1'], allFiles['T1CE'], allFiles['T2'], allFiles['FLAIR']])
 
         return list_of_lists

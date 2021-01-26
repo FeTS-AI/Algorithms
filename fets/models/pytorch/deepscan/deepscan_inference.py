@@ -21,7 +21,7 @@ from torch.nn import ModuleList
 from batchgenerators.augmentations.utils import pad_nd_image
 from scipy.ndimage import label
 
-from data import get_appropriate_file_paths_from_subject_dir
+from fets.data import get_appropriate_file_paths_from_subject_dir
 
 
 # MSHELLER FIXME: Ensure parameters are being passed all the way through. Defaults could be being used erroneously.
