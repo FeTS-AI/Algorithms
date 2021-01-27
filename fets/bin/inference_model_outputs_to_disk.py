@@ -28,23 +28,35 @@ import torchio
 # Note the dependency on choice of n_classes and n_channels for model constructor below
 class_label_map = {0:0, 1:1, 2:2, 4:4}
 
+def is_mask_present(subject_dict):
+    first = next(iter(subject_dict['label']))
+    if first == 'NA':
+        return False
+    else:
+        return True
+    
 
 def subject_to_feature_and_label(subject, pad_z=5):
     features = torch.cat([subject[key][torchio.DATA] for key in ['1', '2', '3', '4']], dim=1)
     print(features.shape)
     
-    label = subject['label'][torchio.DATA]
-    print(label.shape)
+    if is_mask_present(subject):
+        label = subject['label'][torchio.DATA]
+        print(label.shape)
+    else:
+        label = None
     
     if pad_z != 0:
         features_pad = torch.zeros(1, 4, 240, 240, pad_z)
         features = torch.cat([features, features_pad], dim=4)
 
-        label_pad = torch.zeros(1, 1, 240, 240, pad_z)
-        label = torch.cat([label, label_pad], dim=4)
+        if label is not None:
+            label_pad = torch.zeros(1, 1, 240, 240, pad_z)
+            label = torch.cat([label, label_pad], dim=4)
         
     print("Constructed features from subject with shape", features.shape)
-    print("Constructed label from subject with shape",label.shape)
+    if label is not None:
+        print("Constructed label from subject with shape",label.shape)
         
     return features, label
 
@@ -114,8 +126,7 @@ def main(data_csv_path,
             os.mkdir(output_subdir)
         outpath = os.path.join(output_subdir, subfolder + model_output_tag + '_seg.nii.gz')
         
-        first = next(iter(subject['label']))
-        if first != 'NA':
+        if is_mask_present(subject):
             label_path = subject['label']['path'][0]
             label_file = label_path.split('/')[-1]
             # copy the label file over to the output subdir
