@@ -155,8 +155,7 @@ def main(data_csv_path,
         # convert array to SimpleITK image 
         image = sitk.GetImageFromArray(output)
 
-        label_image= sitk.ReadImage(label_path)
-        image.CopyInformation(label_image)
+        image.CopyInformation(sitk.ReadImage(first_mode_path))
 
         print("\nWriting inference NIfTI image of shape {} to {}\n".format(output.shape, outpath))
         sitk.WriteImage(image, outpath)
