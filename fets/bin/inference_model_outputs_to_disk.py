@@ -74,7 +74,8 @@ def main(data_csv_path,
          gandlf_config_path, 
          model_weights_path, 
          output_pardir, 
-         model_output_tag):
+         model_output_tag,
+         device):
 
     # we will use the GANDLFData val loader to serve up the samples to perform inference on
     # will copy the data into the training loader (but not used)
@@ -88,7 +89,7 @@ def main(data_csv_path,
     # construct the data object
     data = GANDLFData(data_path=data_path, divisibility_factor=divisibility_factor)
 
-    # construct the moel object (requires cpu since we're passing [padded] whole brains)
+    # construct the model object (requires cpu since we're passing [padded] whole brains)
     model = Model(data=data, 
                   base_filters = 30,
                   min_learning_rate = 0.000001,
@@ -99,7 +100,7 @@ def main(data_csv_path,
                   loss_function = 'dc',
                   opt = 'sgd',
                   use_penalties = False, 
-                  device='cpu')
+                  device=device)
 
     # Populate the model weights
     
@@ -167,5 +168,6 @@ if __name__ == '__main__':
     parser.add_argument('--model_weights_path', '-mwp', type=str, required=True)
     parser.add_argument('--output_pardir', '-op', type=str, default='./for_sarthak', required=True)
     parser.add_argument('--model_output_tag', '-mot', type=str, default='brandon_6', required=True)
+    parser.add_argument('--device', '-dev', type=str, default='cpu', required=False)
     args = parser.parse_args()
     main(**vars(args))
