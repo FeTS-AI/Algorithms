@@ -105,7 +105,7 @@ def main(data_csv_path,
         os.mkdir(output_pardir)
 
     for subject in data.get_val_loader():
-        first_mode_path = subject['0']['path'][0] # using this because this is only one that's always defined
+        first_mode_path = subject['1']['path'][0] # using this because this is only one that's always defined
         subfolder = first_mode_path.split('/')[-2]
         
         #prep the path for the output file
@@ -114,7 +114,8 @@ def main(data_csv_path,
             os.mkdir(output_subdir)
         outpath = os.path.join(output_subdir, subfolder + model_output_tag + '_seg.nii.gz')
         
-        if 'label' in subject:
+        first = next(iter(subject['label']))
+        if first != 'NA':
             label_path = subject['label']['path'][0]
             label_file = label_path.split('/')[-1]
             # copy the label file over to the output subdir
