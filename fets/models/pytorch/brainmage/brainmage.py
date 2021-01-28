@@ -387,6 +387,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         pred_mask = self(image.float()) # this should happen where "model" is defined
                         aggregator.add_batch(pred_mask, locations)
                     output = aggregator.get_output_tensor() # this is the final mask
+                    output = output.cpu() # sending to cpu because of memory constraints 
                     output = output.unsqueeze(0) # increasing the number of dimension of the mask
                     ### aggregated mask validation
                 
