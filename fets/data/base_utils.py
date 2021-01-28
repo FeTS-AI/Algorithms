@@ -14,7 +14,7 @@ def get_appropriate_file_paths_from_subject_dir(dir_path):
     # Move to one location and ensure sync with feature_modes from the flplan
     brats_modalities = ['T1', 'T2', 'FLAIR', 'T1CE']
     for mod in brats_modalities:
-      returnDict[mod] = None
+        returnDict[mod] = None
 
     # get the input image files and ground truth
     for i in range(len(filesInDir)):

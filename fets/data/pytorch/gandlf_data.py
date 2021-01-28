@@ -5,6 +5,8 @@
 
 import os
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
+import numpy as np
+import torch
 
 from torch.utils.data import DataLoader
 
@@ -34,26 +36,31 @@ class GANDLFData(object):
         print("THE PARAMS ABOVE DO NOT APPLY AND SHOULD BE DISREGARDED ...")
         print("###########################################################\n\n")
 
-        # extract some parameters from the parameters dict
+        # PATCH SAMPLING ONLY APPLIES TO THE TRAIN LOADER
         self.patch_sampler = parameters['patch_sampler']
         self.psize = parameters['psize']
+        # max number of patches in the patch queue
+        self.q_max_length = parameters['q_max_length']
+        # number of patches to draw from a given brain volume for the queue 
+        # (effects the length of the train loader)
+        self.q_samples_per_volume = parameters['q_samples_per_volume']
+        self.q_num_workers = parameters['q_num_workers']
+        self.q_verbose = parameters['q_verbose']
         # sanity check this patch size will work with the model
         for _dim in self.psize:
             if _dim % divisibility_factor != 0:
                raise ValueError('All dimensions of the patch must be divisible by the model divisibility factor.')
-
-        self.q_max_length = parameters['q_max_length']
-        self.q_samples_per_volume = parameters['q_samples_per_volume']
-        self.q_num_workers = parameters['q_num_workers']
-        self.q_verbose = parameters['q_verbose']
         
         # set attributes that come from parameters
         self.class_list = parameters['model']['class_list']
         self.n_classes = len(self.class_list)
         # There is an assumption of batch size of 1
         self.batch_size = 1
+        
+        # augmentations apply only for the trianing loader
+        self.train_augmentations = parameters['data_augmentation']
 
-        self.set_augmentation_attributes(parameters=parameters)
+        self.preprocessing = parameters['data_preprocessing']
 
         # The data_path key, 'model_params_filepath' is required (used above), ['train', 'val', 'infernce', 'penalty'] are optional.
         # Any optionals that are not present result in associated empty loaders.
@@ -73,19 +80,17 @@ class GANDLFData(object):
 
         if self.data_path[data_category] is None:
             loader = []
+            companion_loader = []
         else:
             if data_category == 'train':
                 train = True
                 augmentations = self.train_augmentations
             elif data_category == 'val':
                 train = False
-                augmentations = self.val_augmentations
+                augmentations = None
             elif data_category == 'inference':
                 train = False
-                augmentations = self.inference_augmentations
-            elif data_category == 'penalty':
-                train = False
-                augmentations = self.inference_augmentations
+                augmentations = None
             else:
                 raise ValueError('data_category needs to be one of train, val, inference, or penalty')
 
@@ -122,23 +127,21 @@ class GANDLFData(object):
 
         return loader, companion_loader
 
-    def set_augmentation_attributes(self, parameters):
-
-        data_aug_dict = parameters['data_augmentation']
-
-        # we may want to separately specify for train, val, ...
-        # if so, all augmentations (train, val, inference) need to be specified
-        if 'train' in data_aug_dict:
-            if ('val' not in data_aug_dict) or 'inference' not in data_aug_dict:
-                raise RuntimeError('If specifying train, val, or inference augmenations, do so for all.')
-            self.train_augmentations = data_aug_dict['train']
-            self.val_augmentations = data_aug_dict['val']
-            self.inference_augmentations = data_aug_dict['inference']
-        else:
-            self.train_augmentations = data_aug_dict
-            self.val_augmentations = data_aug_dict
-            self.inference_augmentations = data_aug_dict
-        self.preprocessing = parameters['data_preprocessing']
+    def zero_pad(self, array, axes_to_skip=[0,1]):
+        # zero pads in order to obtain a new array which is properly divisible in all appropriate dimensions
+        current_shape = array.shape
+        current_shape_list = list(current_shape)
+        new_shape = []
+        for idx, dim in enumerate(current_shape_list):
+            if idx in axes_to_skip:
+                new_shape.append(dim)
+            else:
+                remainder = dim % self.divisibility_factor
+                new_shape.append(dim + self.divisibility_factor - remainder)
+        zero_padded_array = torch.zeros(new_shape)
+        slices = [slice(0,dim) for dim in current_shape]
+        zero_padded_array[tuple(slices)] = array
+        return zero_padded_array 
 
     def get_train_loader(self):
         return self.train_loader
@@ -156,10 +159,10 @@ class GANDLFData(object):
         return tuple(self.psize)
 
     def get_training_data_size(self):
-        return len(self.train_loader)
+        return self.training_data_size
     
     def get_validation_data_size(self):
-        return len(self.val_loader)
+        return self.validation_data_size
     
 
 

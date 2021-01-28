@@ -76,14 +76,15 @@ def log_dice_loss(output, target, binary_classification, **kwargs):
                                   **kwargs)
 
 
-def MCD_loss(pm, gt, num_class, weights = None, **kwargs):
+def MCD_loss(pm, gt, num_classes, weights = None, **kwargs):
     acc_dice_loss = 0
-    for i in range(1,num_class):
+    for i in range(1,num_classes):
         current_dice_loss = channel_dice_loss(gt[:,i,:,:,:],pm[:,i,:,:,:])
         if weights is not None:
             current_dice_loss = current_dice_loss * weights[i]
         acc_dice_loss += current_dice_loss
-    acc_dice_loss/= num_class
+    if weights is None:
+        acc_dice_loss/= (num_classes-1)
     return acc_dice_loss
 
 
@@ -96,22 +97,24 @@ def dice(out, target):
     return (2*intersection+smooth)/(oflat.sum()+tflat.sum()+smooth)
 
 
-def CE(out,target):
+def CE(out,target, **kwargs):
+    if bool(torch.sum(target) == 0): # contingency for empty mask
+        return 0
     oflat = out.contiguous().view(-1)
     tflat = target.contiguous().view(-1)
     loss = torch.dot(-torch.log(oflat), tflat)/tflat.sum()
     return loss
 
-def CCE(out, target, num_class):
+def CCE(out, target, num_classes, **kwargs):
     acc_ce_loss = 0
-    for i in range(num_class):
-        acc_ce_loss += CE(out[:,i,:,:,:],target[:,i,:,:,:])
-    acc_ce_loss /= num_class
+    for i in range(num_classes):
+        acc_ce_loss += CE(out[:,i,:,:,:],target[:,i,:,:,:], **kwargs)
+    acc_ce_loss /= num_classes
     return acc_ce_loss
         
 
-def DCCE(out,target, n_classes):
-    l = MCD_loss(out,target, n_classes) + CCE(out,target,n_classes)
+def DCCE(out,target, num_classes, **kwargs):
+    l = MCD_loss(out,target, num_classes, **kwargs) + CCE(out,target,num_classes, **kwargs)
     return l
 
 def TV_loss(inp, target, alpha = 0.3, beta = 0.7):
@@ -122,11 +125,11 @@ def TV_loss(inp, target, alpha = 0.3, beta = 0.7):
     return 1 - (intersection + smooth)/(alpha*iflat.sum() + beta*tflat.sum() + smooth)
 
 
-def MCT_loss(inp, target, num_class):
+def MCT_loss(inp, target, num_classes):
     acc_tv_loss = 0
-    for i in range(0,num_class):
+    for i in range(0,num_classes):
         acc_tv_loss += TV_loss(inp[:,i,:,:,:],target[:,i,:,:,:])
-    acc_tv_loss/= num_class
+    acc_tv_loss/= num_classes
     return acc_tv_loss
 
 def MSE(inp,target):

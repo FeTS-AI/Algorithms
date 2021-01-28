@@ -7,7 +7,7 @@
 
 aggregator_object_init:
   init_kwargs:
-    rounds_to_train: 1
+    rounds_to_train: 200
     init_model_fname: pt_3dresunet_brainmagebrats_init.pbuf 
     latest_model_fname: pt_3dresunet_brainmagebrats_latest_1.pbuf
     best_model_fname: pt_3dresunet_brainmagebrats_best_1.pbuf
@@ -16,17 +16,19 @@ model_object_init:
   class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet
   init_kwargs:
     base_filters: 30
-    learning_rate: 1
+    min_learning_rate: 0.000001
+    max_learning_rate: 0.001
+    learning_rate_cycles_per_epoch: 0.5
     loss_function: dc
-    opt: adam
-    use_penalties: True
+    opt: sgd
+    use_penalties: False
 
 collaborator_object_init:
   init_kwargs:
     polling_interval  : 4
     opt_treatment     : 'CONTINUE_LOCAL'
     send_model_deltas : False
-    epochs_per_round  : 0.5
+    epochs_per_round  : 1.0
 
 network_object_init:
   defaults_file: defaults/network.yaml
@@ -40,5 +42,5 @@ data_object_init:
 inference:
   allowed: True
   kwargs:
-    output_file_tag: 'gandlf_data_resunet_seg'
+    output_file_tag: 'gandlf_data_resunet_1_seg'
   
