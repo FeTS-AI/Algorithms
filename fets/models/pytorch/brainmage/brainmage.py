@@ -25,6 +25,7 @@ from itertools import product
 
 import pandas as pd
 import random
+from copy import deepcopy
 
 import torchio
 import torch
@@ -232,19 +233,17 @@ class BrainMaGeModel(PyTorchFLModel):
                 currentNumber = torch.nonzero(one_hot_mask[:,i,:,:,:], as_tuple=False).size(0)
                 dice_weights_dict[i] = dice_weights_dict[i] + currentNumber # class-specific non-zero voxels
                 total_nonZeroVoxels = total_nonZeroVoxels + currentNumber # total number of non-zero voxels to be considered
-
+        
         if total_nonZeroVoxels == 0:
             raise RuntimeError('Trying to train on data where every label mask is background class only.')
 
-        # get the penalty values - dice_weights contains the overall number for each class in the training data
-        for i in range(1, self.n_classes):
-            penalty = total_nonZeroVoxels # start with the assumption that all the non-zero voxels make up the penalty
-            for j in range(1, self.n_classes):
-                if i != j: # for differing classes, subtract the number
-                    penalty = penalty - dice_penalty_dict[j]
-            
-            dice_penalty_dict[i] = penalty / total_nonZeroVoxels # this is to be used to weight the loss function
-        dice_weights_dict[i] = 1 - dice_weights_dict[i]# this can be used for weighted averaging
+        # dice_weights_dict_temp = deepcopy(dice_weights_dict)
+        dice_weights_dict = {k: (v / total_nonZeroVoxels) for k, v in dice_weights_dict.items()} # divide each dice value by total nonzero
+        dice_penalty_dict = deepcopy(dice_weights_dict) # deep copy so that both values are preserved
+        dice_penalty_dict = {k: 1 - v for k, v in dice_weights_dict.items()} # subtract from 1 for penalty
+        total = sum(dice_penalty_dict.values())
+        dice_penalty_dict = {k: v / total for k, v in dice_penalty_dict.items()} # normalize penalty to ensure sum of 1
+        # dice_penalty_dict = get_class_imbalance_weights(trainingDataFromPickle, parameters, headers, is_regression, class_list) # this doesn't work because ImagesFromDataFrame gets import twice, causing a "'module' object is not callable" error
 
         return dice_weights_dict, dice_penalty_dict
 
