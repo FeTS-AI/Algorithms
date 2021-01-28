@@ -83,7 +83,8 @@ def MCD_loss(pm, gt, num_classes, weights = None, **kwargs):
         if weights is not None:
             current_dice_loss = current_dice_loss * weights[i]
         acc_dice_loss += current_dice_loss
-    acc_dice_loss/= num_classes
+    if weights is None:
+        acc_dice_loss/= (num_classes-1)
     return acc_dice_loss
 
 
