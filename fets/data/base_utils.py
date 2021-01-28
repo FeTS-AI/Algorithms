@@ -10,9 +10,11 @@ def get_appropriate_file_paths_from_subject_dir(dir_path):
 
     returnDict = {}
 
-    brats_modalities = ['T1CE', 'T1', 'T1', 'FLAIR']
-    for mod in returnDict:
-      returnDict[mod] = None
+    # FIXME: There is more than one place the list below is defined
+    # Move to one location and ensure sync with feature_modes from the flplan
+    brats_modalities = ['T1', 'T2', 'FLAIR', 'T1CE']
+    for mod in brats_modalities:
+        returnDict[mod] = None
 
     # get the input image files and ground truth
     for i in range(len(filesInDir)):
