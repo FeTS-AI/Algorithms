@@ -46,6 +46,8 @@ def main(original_data_path, percent_train=0.8):
     # create the train and val parent directories if they do not exist
     
     output_dir = os.path.join(os.path.split(original_data_path)[0], 'Example_Split_Links')
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
 
     train_tag_int = int(percent_train * 100)
     val_tag_int = 100 - train_tag_int
