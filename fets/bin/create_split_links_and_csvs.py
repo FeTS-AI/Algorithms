@@ -48,7 +48,7 @@ def main(original_data_path, percent_train=0.8):
     # normalize original_data_path
     original_data_path = os.path.normpath(original_data_path)
     # create output directory if it does not exist
-    output_dir = os.path.join(original_data_path.split()[0], 'Example_Split_Links')
+    output_dir = os.path.join(os.path.split(original_data_path)[0], 'Example_Split_Links')
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
