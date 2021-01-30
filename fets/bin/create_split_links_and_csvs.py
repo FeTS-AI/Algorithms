@@ -56,8 +56,8 @@ def main(original_data_path, percent_train=0.8):
     train_tag_int = int(percent_train * 100)
     val_tag_int = 100 - train_tag_int
     
-    train_pardir = os.path.join(output_dir, 'Train' + str(train_tag_int) + 'Symbolic_Links')
-    val_pardir = os.path.join(output_dir, 'Val' + str(val_tag_int) + 'Symbolic_Links')
+    train_pardir = os.path.join(output_dir, 'Train' + str(train_tag_int) + 'SymbolicLinks')
+    val_pardir = os.path.join(output_dir, 'Val' + str(val_tag_int) + 'SymbolicLinks')
     for path in [train_pardir, val_pardir]:
         if os.path.exists(path):
             raise RuntimeError("Script does not currently allow creating symlinks in an existing directory (can easily be changed).")
