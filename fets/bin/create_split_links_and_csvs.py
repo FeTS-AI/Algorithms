@@ -17,7 +17,9 @@ def create_part(subfolder_names, actualfiles_dir, link_dirpath):
 def main(original_data_path, percent_train=0.8,split_dirname='TrainValSplits'):
     """
     Creates symlink directories for train and val data pointing to original_data_path, then
-    creates GANDLF config csvs for each.
+    creates GANDLF config csvs for each. Both the symlink directories and csvs will be placed
+    in a folder in the same directory as sits original_data_path, and its name will be whatever
+    is provided as split_dirname.
     NOTE: The channel ids and label id to look for in csv creation are hard-coded below.
           Though there is an order associated to the channels produced by the csv, it is the FeTS 
           gandlf_data object that specifies the order of modalities produced for the feature
