@@ -14,7 +14,7 @@ def create_part(subfolder_names, actualfiles_dir, link_dirpath):
     
 
 
-def main(original_data_path, percent_train=0.8):
+def main(original_data_path, percent_train=0.8,split_dirname='TrainValSplits'):
     """
     Creates symlink directories for train and val data pointing to original_data_path, then
     creates GANDLF config csvs for each.
@@ -48,7 +48,6 @@ def main(original_data_path, percent_train=0.8):
     # normalize original_data_path
     original_data_path = os.path.normpath(original_data_path)
     # create output directory if it does not exist
-    split_dirname = 'TrainValSplits'
     output_dir = os.path.join(os.path.split(original_data_path)[0], split_dirname)
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -111,5 +110,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--original_data_path', '-odp', type=str, required=True)
     parser.add_argument('--percent_train', '-pt', type=float, default=0.8)
+    parser.add_argument('--split_dirname', '-sd', type=str, default='TrainValSplits')
     args = parser.parse_args()
     main(**vars(args))
