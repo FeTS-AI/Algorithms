@@ -48,7 +48,7 @@ def main(original_data_path, percent_train=0.8):
     # normalize original_data_path
     original_data_path = os.path.normpath(original_data_path)
     # create output directory if it does not exist
-    split_dirname = 'Train_Val_Splits'
+    split_dirname = 'TrainValSplits'
     output_dir = os.path.join(os.path.split(original_data_path)[0], split_dirname)
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -56,8 +56,8 @@ def main(original_data_path, percent_train=0.8):
     train_tag_int = int(percent_train * 100)
     val_tag_int = 100 - train_tag_int
     
-    train_pardir = os.path.join(output_dir, 'Train_' + str(train_tag_int) + '_Symbolic_Links')
-    val_pardir = os.path.join(output_dir, 'Val_' + str(val_tag_int) + '_Symbolic_Links')
+    train_pardir = os.path.join(output_dir, 'Train' + str(train_tag_int) + 'Symbolic_Links')
+    val_pardir = os.path.join(output_dir, 'Val' + str(val_tag_int) + 'Symbolic_Links')
     for path in [train_pardir, val_pardir]:
         if os.path.exists(path):
             raise RuntimeError("Script does not currently allow creating symlinks in an existing directory (can easily be changed).")
@@ -90,14 +90,14 @@ def main(original_data_path, percent_train=0.8):
     channelsID = '_t1.nii.gz,_t2.nii.gz,_flair.nii.gz,_t1ce.nii.gz'
     labelID = '_seg.nii.gz'
 
-    train_csvpath = os.path.join(output_dir, 'Train_' + str(train_tag_int) + '.csv')
+    train_csvpath = os.path.join(output_dir, 'train_' + str(train_tag_int) + '.csv')
     print("Creating the training csv at path: {}\n".format(train_csvpath))
     writeTrainingCSV(channelsID=channelsID, 
                     labelID=labelID, 
                     inputDir=train_pardir, 
                     outputFile=train_csvpath)
 
-    val_csvpath = os.path.join(output_dir, 'Val_' + str(val_tag_int) + '.csv')
+    val_csvpath = os.path.join(output_dir, 'val_' + str(val_tag_int) + '.csv')
     print("Creating the validation csv at path: {}\n".format(val_csvpath))
     writeTrainingCSV(channelsID=channelsID, 
                     labelID=labelID, 
