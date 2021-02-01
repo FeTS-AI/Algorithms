@@ -288,7 +288,8 @@ class BrainMaGeModel(PyTorchFLModel):
                 if subject_num >= num_subjects:
                     break
                 else:
-                    print('=== Memory (allocated; cached) : ', round(torch.cuda.memory_allocated(0)/1024**3, 1), '; ', round(torch.cuda.memory_reserved(0)/1024**3, 1))
+                    if device.type == 'cuda':
+                        print('=== Memory (allocated; cached) : ', round(torch.cuda.memory_allocated(0)/1024**3, 1), '; ', round(torch.cuda.memory_reserved(0)/1024**3, 1))
                     # Load the subject and its ground truth
                     # this is when we are using pt_brainmagedata
                     if ('features' in subject.keys()) and ('gt' in subject.keys()):
