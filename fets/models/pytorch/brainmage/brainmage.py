@@ -339,6 +339,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
         # we return the average batch loss over all epochs trained this round (excluding the nan results)
         # we also return the number of samples that produced nan losses, as well as total samples used
+        # FIXME: In a federation we may want the collaborators data size to be modified when backprop is skipped.
         return {"loss": total_loss / num_subject_grads, "num_nan_losses": num_nan_losses, "num_samples_used": num_subjects }
 
     def validate(self, use_tqdm=False):
