@@ -338,9 +338,8 @@ class BrainMaGeModel(PyTorchFLModel):
         num_subject_grads = num_subjects - num_nan_losses
 
         # we return the average batch loss over all epochs trained this round (excluding the nan results)
-        # we also return the number of data samples (which for us here is the number of batches)
-        # that were use (excluding samples that produced a nan gradient)
-        return total_loss / num_subject_grads, num_nan_losses
+        # we also return the number of samples that produced nan losses, as well as total samples used
+        return {"loss": total_loss / num_subject_grads, "num_nan_losses": num_nan_losses, "num_samples_used": num_subjects }
 
     def validate(self, use_tqdm=False):
         device = torch.device(self.device)       
