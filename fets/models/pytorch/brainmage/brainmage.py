@@ -276,14 +276,14 @@ class BrainMaGeModel(PyTorchFLModel):
         if use_tqdm:
             train_loader = tqdm.tqdm(train_loader, desc="training for this round")
 
-        total_round_training_loss = 0
+        total_loss = 0
         subject_num = 0
+        num_nan_losses = 0
 
         # set to "training" mode
         self.train()
         while subject_num < num_subjects:
                        
-            total_loss = 0
             for subject in train_loader:
                 if subject_num >= num_subjects:
                     break
@@ -318,13 +318,16 @@ class BrainMaGeModel(PyTorchFLModel):
                     output = self(features.float())
                     # Computing the loss
                     loss = self.loss_fn(output.float(), mask.float(),num_classes=self.label_channels, weights=self.dice_penalty_dict)
-                    # Back Propagation for model to learn
-                    loss.backward()
-                    #Updating the weight values
-                    self.optimizer.step()
-                    #Pushing the dice to the cpu and only taking its value
-                    loss.cpu().data.item()
-                    total_loss += loss
+                    # Back Propagation for model to learn (unless loss is nan)
+                    if torch.isnan(loss):
+                        num_nan_losses += 1
+                    else:
+                        loss.backward()
+                        #Updating the weight values
+                        self.optimizer.step()
+                        #Pushing the dice to the cpu and only taking its value
+                        loss.cpu().data.item()
+                        total_loss += loss
                     self.lr_scheduler.step()
 
                     # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
@@ -332,9 +335,12 @@ class BrainMaGeModel(PyTorchFLModel):
 
                     subject_num += 1
 
-            total_round_training_loss += total_loss
-        # we return the average batch loss over all epochs trained this round
-        return total_round_training_loss / num_subjects
+        num_subject_grads = num_subjects - num_nan_losses
+
+        # we return the average batch loss over all epochs trained this round (excluding the nan results)
+        # we also return the number of samples that produced nan losses, as well as total samples used
+        # FIXME: In a federation we may want the collaborators data size to be modified when backprop is skipped.
+        return {"loss": total_loss / num_subject_grads, "num_nan_losses": num_nan_losses, "num_samples_used": num_subjects }
 
     def validate(self, use_tqdm=False):
         device = torch.device(self.device)       
