@@ -21,10 +21,12 @@ class GANDLFData(object):
     def __init__(self, 
                  data_path, 
                  divisibility_factor,
+                 in_memory=False,
                  **kwargs):
 
         self.data_path = data_path
         self.divisibility_factor = divisibility_factor
+        self.in_memory = in_memory
 
         print("\n\n###########################################################")
         print("THE PARAMS BELOW DO NOT APPLY AND SHOULD BE DISREGARDED ...")
@@ -105,7 +107,8 @@ class GANDLFData(object):
                                                sampler=self.patch_sampler, 
                                                train=train, 
                                                augmentations=augmentations, 
-                                               preprocessing=self.preprocessing)
+                                               preprocessing=self.preprocessing, 
+                                               in_memory=self.in_memory)
             loader = DataLoader(DataForTorch, batch_size=self.batch_size)
             
             companion_loader = None
