@@ -50,7 +50,8 @@ class GANDLFData(object):
         self.feature_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
         # used as headers for dataframe used to create data loader (when csv's are not provided)
         # dependency (other methods expect the first header to be subject name and subsequent ones being self.feature_modes)
-        self.default_dataframe_headers = ['SubjectID'] + self.feature_modes
+        self.default_train_val_headers = ['SubjectID'] + self.feature_modes
+        self.default_inference_headers = ['SubjectID'] + self.feature_modes + ['Label']
 
         self.divisibility_factor = divisibility_factor
         self.in_memory = in_memory
@@ -95,22 +96,30 @@ class GANDLFData(object):
         if data_usage == 'train-val':
             if isinstance(data_path, dict):
                 if ('train' not in data_path) or ('val' not in data_path):
-                    raise ValueError('Must point to csv for both train and val when data_usage is train-val and using dictionary data path.')
+                    raise ValueError('data_path dictionary is missing either train or val key, either privide these, or change to a string data_path (train/val split will then be automatically determined.')
                 train_dataframe, train_headers = get_dataframe_and_headers(file_data_full=data_path['train'])
                 val_dataframe,  val_headers = get_dataframe_and_headers(file_data_full=data_path['val'])
                 
                 # validate headers are the same
                 if len(train_headers) != len(val_headers):
-                    raise ValueError('Train/Val headers must align, but found different number of headers in each.')
+                    raise ValueError('Train/Val headers must agree, but found different number of headers in each.')
                 for idx in len(train_headers):
                     if train_headers[idx] != val_headers[idx]:
-                        raise ValueError('Train/Val headers must align ({} != {} found at index {}).'.format(train_headers[idx], val_headers[idx], idx))
+                        raise ValueError('Train/Val headers must agree ({} != {} found at index {}).'.format(train_headers[idx], val_headers[idx], idx))
                 headers = train_headers
             else:
-                headers = self.default_dataframe_headers
+                headers = self.default_train_val_headers
                 train_dataframe, val_dataframe = self.create_train_val_dataframes(pardir=datapath, headers=headers, percent_train=percent_train)
             self.headers = headers
         elif data_usage == 'inference':
+            if isinstance(data_path, dict):
+                if ('inference' not in data_path):
+                    raise ValueError('data_path dictionary is missing the inference key, either privide this entry or change to a string data_path')
+                inference_dataframe, headers = get_dataframe_and_headers(file_data_full=data_path['inference'])
+            else:
+                headers = self.default_dataframe_headers
+                inference_dataframe = self.create_train_val_dataframes(pardir=datapath, headers=headers, percent_train=percent_train)
+            self.headers = headers
         else:
             raise ValueError('data_usage needs to be either train-val or inference')
 
@@ -181,6 +190,24 @@ delete below
         
         # create the dataframes
         train_dataframe = create_dataframe_from_subdirpaths(train_paths)
+        val_dataframe = create_dataframe_from_subdirpaths(val_paths)
+
+        return train_dataframe, val_dataframe
+
+    
+    def create_inference_dataframes(self, pardir, headers):
+        subdirs_list = os.listdir(pardir)
+        # filter subdirectories not meant for grabbing subject data
+        sudirs_list = [subdir for subdir in subdirs_list if subdir not in self.excluded_subdirs]
+        
+        # create full paths to subdirs
+        subdir_paths_list = [os.path.join(pardir, subdir) for sudir in subdirs_list]
+        
+        
+        inference_paths = sudir_paths_list 
+        
+        # create the dataframes
+        inference_dataframe = create_dataframe_from_subdirpaths(train_paths)
         val_dataframe = create_dataframe_from_subdirpaths(val_paths)
 
         return train_dataframe, val_dataframe
