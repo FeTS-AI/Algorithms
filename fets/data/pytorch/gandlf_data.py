@@ -50,8 +50,18 @@ class GANDLFData(object):
         self.feature_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
         # used as headers for dataframe used to create data loader (when csv's are not provided)
         # dependency (other methods expect the first header to be subject name and subsequent ones being self.feature_modes)
-        self.default_train_val_headers = ['SubjectID'] + self.feature_modes
-        self.default_inference_headers = ['SubjectID'] + self.feature_modes + ['Label']
+        
+        self.default_train_val_headers = {}
+        self.default_train_val_headers['subjectIDHeader'] = 'SubjectID'
+        self.default_train_val_headers['channelHeaders'] = self.feature_modes
+        self.default_train_val_headers['labelHeader'] = 'Label'
+        self.default_train_val_headers['predictionHeaders'] = []
+        
+        self.default_inference_headers = {}
+        self.default_inference_headers['subjectIDHeader'] = 'SubjectID'
+        self.default_inference_headers['channelHeaders'] = self.feature_modes
+        self.default_inference_headers['labelHeader'] = None
+        self.default_inference_headers['predictionHeaders'] = []
 
         self.divisibility_factor = divisibility_factor
         self.in_memory = in_memory
@@ -85,15 +95,8 @@ class GANDLFData(object):
         self.excluded_subdirs = excluded_subdirs
         self.shuffle_before_train_val_split = shuffle_before_train_val_split
 
-        self.data_files
-
-        here create dictionary of dataframes (which can be none)
-        the dataframes can come from csvs, will happen if data_name
-        is a dictionary.
-
-        
-
         if data_usage == 'train-val':
+            # get the dataframe and headers
             if isinstance(data_path, dict):
                 if ('train' not in data_path) or ('val' not in data_path):
                     raise ValueError('data_path dictionary is missing either train or val key, either privide these, or change to a string data_path (train/val split will then be automatically determined.')
@@ -101,76 +104,66 @@ class GANDLFData(object):
                 val_dataframe,  val_headers = get_dataframe_and_headers(file_data_full=data_path['val'])
                 
                 # validate headers are the same
-                if len(train_headers) != len(val_headers):
-                    raise ValueError('Train/Val headers must agree, but found different number of headers in each.')
-                for idx in len(train_headers):
-                    if train_headers[idx] != val_headers[idx]:
-                        raise ValueError('Train/Val headers must agree ({} != {} found at index {}).'.format(train_headers[idx], val_headers[idx], idx))
-                headers = train_headers
+                for header_type in ['subjectIDHeader', 'channelHeaders', 'labelHeader', 'predictionHeaders']:
+                    if train_headers[header_type] != val_headers[header_type]:
+                        raise ValueError('Train/Val headers must agree, but found different {} ({} != {})'.format(header_type, train_headers[header_type], val_headers[header_type]))
+                self.headers = train_headers
             else:
-                headers = self.default_train_val_headers
-                train_dataframe, val_dataframe = self.create_train_val_dataframes(pardir=datapath, headers=headers, percent_train=percent_train)
-            self.headers = headers
+                self.headers = self.default_train_val_headers
+                train_dataframe, val_dataframe = self.create_train_val_dataframes(pardir=data_path, percent_train=percent_train)
+            # get the loaders
+            self.train_loader, self.penalty_loader = self.get_loaders(data_frame=train_dataframe, train=True, augmentations=self.train_augmentations)
+            self.val_loader, _ = self.get_loaders(data_frame=val_dataframe, train=False, augmentations=None)
+            self.inference_loader = []
+
         elif data_usage == 'inference':
+            # get the dataframe and headers
             if isinstance(data_path, dict):
                 if ('inference' not in data_path):
                     raise ValueError('data_path dictionary is missing the inference key, either privide this entry or change to a string data_path')
-                inference_dataframe, headers = get_dataframe_and_headers(file_data_full=data_path['inference'])
+                inference_dataframe, self.headers = get_dataframe_and_headers(file_data_full=data_path['inference'])
             else:
-                headers = self.default_dataframe_headers
-                inference_dataframe = self.create_train_val_dataframes(pardir=datapath, headers=headers, percent_train=percent_train)
-            self.headers = headers
+                self.headers = self.default_inference_headers
+                inference_dataframe = self.create_inference_dataframe(pardir=data_path)
+            # get the loaders
+            self.train_loader = []
+            self.penalty_loader = []
+            self.val_loader = []
+            self.inference_loader, _ = self.get_loaders(data_frame=inference_dataframe, train=False, augmentations=None)
         else:
             raise ValueError('data_usage needs to be either train-val or inference')
-
-        WORKING HERE TOO
-            for
-
-delete below
-        # The data_path key, 'model_params_filepath' is required (used above), ['train', 'val', 'infernce', 'penalty'] are optional.
-        # Any optionals that are not present result in associated empty loaders.
-        for data_category in ['train-val', 'inference', 'penalty']:
-            if data_category not in data_path:
-                data_path[data_category] = None
         
-        self.train_loader, self.penalty_loader = self.get_loader('train')
-        self.val_loader, _ = self.get_loader('val')
-        self.inference_loader, _ = self.get_loader('inference')
-        
+        self.headers_list = [self.headers['subjectIDHeader']] + self.headers['channelHeaders'] + [self.headers['labelHeader']] + [self.headers['predictionHeaders']]
         self.training_data_size = len(self.train_loader)
         self.validation_data_size = len(self.val_loader)
 
-    def create_dataframe_from_subdirpaths(self, subdir_paths):
-        columns = {header: [] for header in self.default_dataframe_headers}
+    def create_dataframe_from_subdir_paths(self, subdir_paths, include_labels):
+
+        columns = {header: [] for header in self.headers_list}
         for subdir_path in subdir_paths:
             # grab second to last part of path (subdir name)
             subdir = os.path.split(os.path.split(subdir_path)[0])[1]
-            feature_fpaths = get_appropriate_file_paths_from_subject_dir(subdir_path)
+            fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, include_labels=include_labels)
             # write dataframe row
-            colums[self.default_dataframe_headers[0]] = subdir
-            for mode in self.feature_modes:
-                columns[mode].append(feature_fpaths[mode])
-
-            # sanity check that you have writen to every column of this row
-            comparison = None
-            for key, column in columns.items:
-                this_length = len(column)
-                if comparison is not None:
-                    if this_length != comparison:
-                        raise RuntimeError('Filling dataframe for dataset and attempted to progress without writing entire row.')
-                comparison = this_length
+            columns[self.headers_list[0]].append(subdir)
+            for header in self.headers_list[1:]:
+                columns[header].append(fpaths[header])
 
         return pd.DataFrame(columns)
 
-    def create_train_val_dataframes(self, pardir, headers, percent_train):
+    def get_subdir_paths(self, pardir):
         subdirs_list = os.listdir(pardir)
         # filter subdirectories not meant for grabbing subject data
-        sudirs_list = [subdir for subdir in subdirs_list if subdir not in self.excluded_subdirs]
-        total_subjects = len(subdirs_list)
+        subdirs_list = [subdir for subdir in subdirs_list if subdir not in self.excluded_subdirs]
         
         # create full paths to subdirs
-        subdir_paths_list = [os.path.join(pardir, subdir) for sudir in subdirs_list]
+        subdir_paths_list = [os.path.join(pardir, subdir) for subdir in subdirs_list]
+        return subdir_paths_list
+
+    def create_train_val_dataframes(self, pardir, percent_train):
         
+        subdir_paths_list = self.get_subdir_paths(pardir)
+        total_subjects = len(subdir_paths_list)
         if self.shuffle_before_train_val_split:
             np.random.shuffle(subdir_paths_list)
         
@@ -183,92 +176,59 @@ delete below
         if (split_idx == 0) or (split_idx == total_subjects):
             raise ValueError('Value of percent_train {} is leading to empty val or train set due to only {} subjects found under {} '.format(percent_train, total_subjects, pardir))
         
-        train_paths = sudir_paths_list[:split_idx]
+        train_paths = subdir_paths_list[:split_idx]
         val_paths = subdir_paths_list[split_idx:] 
         print('Splitting the {} subjects in {} using percent_train of {}'.format(total_subjects, pardir, percent_train))
         print('Resulting train and val sets have counts {} and {} respectively.'.format(len(train_paths), len(val_paths)))
         
         # create the dataframes
-        train_dataframe = create_dataframe_from_subdirpaths(train_paths)
-        val_dataframe = create_dataframe_from_subdirpaths(val_paths)
+        train_dataframe = self.create_dataframe_from_subdir_paths(train_paths, include_labels=True)
+        val_dataframe = self.create_dataframe_from_subdir_paths(val_paths, include_labels=True)
 
         return train_dataframe, val_dataframe
 
     
-    def create_inference_dataframes(self, pardir, headers):
-        subdirs_list = os.listdir(pardir)
-        # filter subdirectories not meant for grabbing subject data
-        sudirs_list = [subdir for subdir in subdirs_list if subdir not in self.excluded_subdirs]
+    def create_inference_dataframe(self, pardir):
         
-        # create full paths to subdirs
-        subdir_paths_list = [os.path.join(pardir, subdir) for sudir in subdirs_list]
-        
-        
-        inference_paths = sudir_paths_list 
+        inference_paths = self.get_subdir_paths(pardir)
         
         # create the dataframes
-        inference_dataframe = create_dataframe_from_subdirpaths(train_paths)
-        val_dataframe = create_dataframe_from_subdirpaths(val_paths)
-
-        return train_dataframe, val_dataframe
+        inference_dataframe = self.create_dataframe_from_subdir_paths(inference_paths, include_labels=False)
+    
+        return inference_dataframe
         
-
-
-WORKING HERE
-
-        # create val dataframe
-
-
-    def get_loader(self, data_category):
-        # get the data if the path is provided
-
-        if self.data_path[data_category] is None:
-            loader = []
-            companion_loader = []
-        else:
-            if data_category == 'train':
-                train = True
-                augmentations = self.train_augmentations
-            elif data_category == 'val':
-                train = False
-                augmentations = None
-            elif data_category == 'inference':
-                train = False
-                augmentations = None
-            else:
-                raise ValueError('data_category needs to be one of train, val, inference, or penalty')
-
-            DataFromPickle, headers = get_dataframe_and_headers(file_data_full=self.data_path[data_category])
-            DataForTorch = ImagesFromDataFrame(dataframe=DataFromPickle, 
-                                               psize=self.psize, 
-                                               headers=headers, 
-                                               q_max_length=self.q_max_length, 
-                                               q_samples_per_volume=self.q_samples_per_volume,
-                                               q_num_workers=self.q_num_workers, 
-                                               q_verbose=self.q_verbose, 
-                                               sampler=self.patch_sampler, 
-                                               train=train, 
-                                               augmentations=augmentations, 
-                                               preprocessing=self.preprocessing, 
-                                               in_memory=self.in_memory)
-            loader = DataLoader(DataForTorch, batch_size=self.batch_size)
-            
-            companion_loader = None
-            if data_category == 'train':
-                # here pinning the penalty loader to the training dataframe (the only use of companion_loader)
-                # using full brain patches, and no augmentations
-                CompDataForTorch = ImagesFromDataFrame(dataframe=DataFromPickle, 
-                                                       psize=[240, 240, 155], 
-                                                       headers=headers, 
-                                                       q_max_length=self.q_max_length, 
-                                                       q_samples_per_volume=self.q_samples_per_volume,
-                                                       q_num_workers=self.q_num_workers, 
-                                                       q_verbose=self.q_verbose, 
-                                                       sampler='uniform', 
-                                                       train=False, 
-                                                       augmentations=None, 
-                                                       preprocessing=self.preprocessing)
-                companion_loader = DataLoader(CompDataForTorch, batch_size=self.batch_size)
+    def get_loaders(self, data_frame, train, augmentations):
+        
+        data = ImagesFromDataFrame(dataframe=data_frame, 
+                                   psize=self.psize, 
+                                   headers=self.headers, 
+                                   q_max_length=self.q_max_length, 
+                                   q_samples_per_volume=self.q_samples_per_volume,
+                                   q_num_workers=self.q_num_workers, 
+                                   q_verbose=self.q_verbose, 
+                                   sampler=self.patch_sampler, 
+                                   train=train, 
+                                   augmentations=augmentations, 
+                                   preprocessing=self.preprocessing, 
+                                   in_memory=self.in_memory)
+        loader = DataLoader(data, batch_size=self.batch_size)
+        
+        companion_loader = None
+        if train:
+            # here pinning the penalty loader to the training dataframe (the only use of companion_loader)
+            # using full brain patches, and no augmentations
+            companion_data = ImagesFromDataFrame(dataframe=data_frame, 
+                                                 psize=[240, 240, 155], 
+                                                 headers=self.headers, 
+                                                 q_max_length=self.q_max_length, 
+                                                 q_samples_per_volume=self.q_samples_per_volume,
+                                                 q_num_workers=self.q_num_workers, 
+                                                 q_verbose=self.q_verbose, 
+                                                 sampler='uniform', 
+                                                 train=False, 
+                                                 augmentations=None, 
+                                                 preprocessing=self.preprocessing)
+            companion_loader = DataLoader(companion_data, batch_size=self.batch_size)
 
         return loader, companion_loader
 
