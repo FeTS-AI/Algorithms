@@ -1,4 +1,5 @@
 import os 
+import numpy as np
 
 # FIXME: Look to all usages and fix the fact that we are inspecting files multiple times
 #  for example we can optimize how we determine which patient directories to exlcude due to missing files 
@@ -20,7 +21,7 @@ def get_appropriate_file_paths_from_subject_dir(dir_path,
                       'T2': ['_t2.nii.gz'], 
                       'FLAIR': ['_flair.nii.gz'], 
                       'T1CE': ['_t1ce.nii.gz', '_t1gd.nii.gz']} 
-    return_dict = {type: None for type in file_types}
+    return_dict = {type: None for type in brats_modes}
     if include_labels:
         return_dict[label_tag] = None
 
