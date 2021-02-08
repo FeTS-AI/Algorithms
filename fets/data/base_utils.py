@@ -43,5 +43,9 @@ def get_appropriate_file_paths_from_subject_dir(dir_path,
                     return_dict[label_tag] = fpath
                 else:
                     raise RuntimeError('Found two label files (allowing any of {} and excluding any of {}) in directory {} '.format(allowed_labelfile_endings, excluded_labelfile_endings, dir_path))
+
+    for key, value in return_dict.items():
+        if value is None:
+            raise ValueError('No {} file found in {}.'.format(key, dir_path))
                  
     return return_dict
