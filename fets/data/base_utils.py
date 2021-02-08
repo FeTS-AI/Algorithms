@@ -12,7 +12,7 @@ def get_appropriate_file_paths_from_subject_dir(dir_path,
     '''
     filesInDir = os.listdir(dir_path)
 
-    # FIXME: There is more than one place the list below is defined
+    # FIXME: There is more than one place the list below is defined (example: gandlf_data)
     # Move to one location and ensure sync with feature_modes from the flplan
     brats_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
     label_tag = 'Label'
@@ -29,18 +29,19 @@ def get_appropriate_file_paths_from_subject_dir(dir_path,
         fpath = os.path.abspath(os.path.join(dir_path,_file))
         # Is this file a valid feature mode (and not already found)?
         for mode in brats_modes:
-            if np.any(_file.endswith(ending) for ending in mode_to_endings[mode]):
+            if np.any([_file.endswith(ending) for ending in mode_to_endings[mode]]):
                 if return_dict[mode] is None:
                     return_dict[mode] = fpath
                 else:
                     raise RuntimeError('Found two {} files in {} '.format(mode, dir_path))
-        # Is this file a valid label (and not alreay found or in the excluded labelfile list)
-        allowed_label = np.any(_file.endswith(ending) for ending in allowed_labelfile_endings)
-        excluded_label = np.any(_file.endswith(ending) for ending in excluded_labelfile_endings)
-        if allowed_label and not excluded_label:
-            if return_dict[mode] is None:
-                return_dict[mode] = fpath
-            else:
-                raise RuntimeError('Found two label files (allowing any of {} and excluding any of {}) in directory {} '.format(allowed_labelfile_endings, excluded_labelfile_endings, dir_path))
+        if include_labels:
+            # Is this file a valid label (and not alreay found or in the excluded labelfile list)
+            allowed_label = np.any([_file.endswith(ending) for ending in allowed_labelfile_endings])
+            excluded_label = np.any([_file.endswith(ending) for ending in excluded_labelfile_endings])
+            if allowed_label and not excluded_label:
+                if return_dict[label_tag] is None:
+                    return_dict[label_tag] = fpath
+                else:
+                    raise RuntimeError('Found two label files (allowing any of {} and excluding any of {}) in directory {} '.format(allowed_labelfile_endings, excluded_labelfile_endings, dir_path))
                  
     return return_dict

@@ -48,20 +48,29 @@ class GANDLFData(object):
         # feature stack order (determines order of feature stack modes)
         # depenency here with mode naming convention used in get_appropriate_file_paths_from_subject_dir
         self.feature_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
+        self.label_tag = 'Label'
+
+        # GANDLF is going to expect numerical header names
+        self.numeric_header_names = {mode: idx+1 for idx, mode in enumerate(self.feature_modes)}
+        self.numeric_header_names[self.label_tag] = len(self.feature_modes) + 1
+        # inverse of dictionary above
+        self.numeric_header_name_to_key = {value: key for key, value in self.numeric_header_names.items()}
+        
         # used as headers for dataframe used to create data loader (when csv's are not provided)
         # dependency (other methods expect the first header to be subject name and subsequent ones being self.feature_modes)
         
         self.default_train_val_headers = {}
-        self.default_train_val_headers['subjectIDHeader'] = 'SubjectID'
-        self.default_train_val_headers['channelHeaders'] = self.feature_modes
-        self.default_train_val_headers['labelHeader'] = 'Label'
+        self.default_train_val_headers['subjectIDHeader'] = 0
+        self.default_train_val_headers['channelHeaders'] = [self.numeric_header_names[mode] for mode in self.feature_modes]
+        self.default_train_val_headers['labelHeader'] = self.numeric_header_names[self.label_tag]
         self.default_train_val_headers['predictionHeaders'] = []
         
         self.default_inference_headers = {}
-        self.default_inference_headers['subjectIDHeader'] = 'SubjectID'
-        self.default_inference_headers['channelHeaders'] = self.feature_modes
+        self.default_inference_headers['subjectIDHeader'] = 0
+        self.default_inference_headers['channelHeaders'] = [self.numeric_header_names[mode] for mode in self.feature_modes]
         self.default_inference_headers['labelHeader'] = None
         self.default_inference_headers['predictionHeaders'] = []
+        
 
         self.divisibility_factor = divisibility_factor
         self.in_memory = in_memory
@@ -107,9 +116,9 @@ class GANDLFData(object):
                 for header_type in ['subjectIDHeader', 'channelHeaders', 'labelHeader', 'predictionHeaders']:
                     if train_headers[header_type] != val_headers[header_type]:
                         raise ValueError('Train/Val headers must agree, but found different {} ({} != {})'.format(header_type, train_headers[header_type], val_headers[header_type]))
-                self.headers = train_headers
+                self.set_headers_and_headers_list(train_headers)
             else:
-                self.headers = self.default_train_val_headers
+                self.set_headers_and_headers_list(self.default_train_val_headers, list_needed=True)
                 train_dataframe, val_dataframe = self.create_train_val_dataframes(pardir=data_path, percent_train=percent_train)
             # get the loaders
             self.train_loader, self.penalty_loader = self.get_loaders(data_frame=train_dataframe, train=True, augmentations=self.train_augmentations)
@@ -123,7 +132,7 @@ class GANDLFData(object):
                     raise ValueError('data_path dictionary is missing the inference key, either privide this entry or change to a string data_path')
                 inference_dataframe, self.headers = get_dataframe_and_headers(file_data_full=data_path['inference'])
             else:
-                self.headers = self.default_inference_headers
+                self.set_headers_and_headers_list(self.default_inference_headers, list_needed=True)
                 inference_dataframe = self.create_inference_dataframe(pardir=data_path)
             # get the loaders
             self.train_loader = []
@@ -133,22 +142,28 @@ class GANDLFData(object):
         else:
             raise ValueError('data_usage needs to be either train-val or inference')
         
-        self.headers_list = [self.headers['subjectIDHeader']] + self.headers['channelHeaders'] + [self.headers['labelHeader']] + [self.headers['predictionHeaders']]
         self.training_data_size = len(self.train_loader)
         self.validation_data_size = len(self.val_loader)
+
+        
+    def set_headers_and_headers_list(self, headers, list_needed=False):
+        self.headers = headers
+        if list_needed:
+            self.headers_list = [self.headers['subjectIDHeader']] + self.headers['channelHeaders'] + [self.headers['labelHeader']] + self.headers['predictionHeaders']
+            
 
     def create_dataframe_from_subdir_paths(self, subdir_paths, include_labels):
 
         columns = {header: [] for header in self.headers_list}
         for subdir_path in subdir_paths:
             # grab second to last part of path (subdir name)
-            subdir = os.path.split(os.path.split(subdir_path)[0])[1]
+            subdir = os.path.split(subdir_path)[1]
             fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, include_labels=include_labels)
             # write dataframe row
             columns[self.headers_list[0]].append(subdir)
             for header in self.headers_list[1:]:
-                columns[header].append(fpaths[header])
-
+                columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
+        
         return pd.DataFrame(columns)
 
     def get_subdir_paths(self, pardir):
