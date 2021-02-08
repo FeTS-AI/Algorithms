@@ -38,6 +38,7 @@ data_object_init:
   data_name_in_local_config: test_init_path
   init_kwargs: 
     divisibility_factor: 16
+    percent_train: 0.8
     in_memory: True
     data_usage: 'train-val'
     patch_sampler: 'uniform'
@@ -47,11 +48,20 @@ data_object_init:
     q_num_workers: 0  
     q_verbose: False
     class_list: [0, 1, 2, 4]
-    data_augmentation:  
-      'noise': 
-        'mean': 0.0 
-        'std': 0.1 
+    data_augmentation:
+      'noise':
+        'mean': 0.0
+        'std': 0.1
         'probability': 0.2
+      'rotate_90':
+        'axis': [1, 2, 3]
+        'probability': 0.5
+      'rotate_180':
+        'axis': [1, 2, 3]
+        'probability': 0.5
+      'flip':
+        'axes_to_flip': [0, 1, 2]
+        'probability': 1.0      
     data_preprocessing:
       'crop_external_zero_planes': null
       'normalize_nonZero': null
