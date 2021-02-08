@@ -64,7 +64,7 @@ data_object_init:
         'probability': 1.0      
     data_preprocessing:
       'crop_external_zero_planes': null
-      'normalize_nonZero': null
+      'normalize_nonZero_masked': null
                       
 
 inference:
