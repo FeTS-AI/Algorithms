@@ -116,6 +116,7 @@ class GANDLFData(object):
                 for header_type in ['subjectIDHeader', 'channelHeaders', 'labelHeader', 'predictionHeaders']:
                     if train_headers[header_type] != val_headers[header_type]:
                         raise ValueError('Train/Val headers must agree, but found different {} ({} != {})'.format(header_type, train_headers[header_type], val_headers[header_type]))
+                print("\n\nTrain datafrane from csvs has colums: ", train_dataframe.columns)
                 self.set_headers_and_headers_list(train_headers)
             else:
                 self.set_headers_and_headers_list(self.default_train_val_headers, list_needed=True)
@@ -163,7 +164,7 @@ class GANDLFData(object):
             columns[self.headers_list[0]].append(subdir)
             for header in self.headers_list[1:]:
                 columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
-        
+        print("dataframe being produced from columns dict: ", columns)
         return pd.DataFrame(columns)
 
     def get_subdir_paths(self, pardir):
