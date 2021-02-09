@@ -1,0 +1,74 @@
+# Compose an FL plan in JSON/YAML.
+# The plan is consumed by
+#  bin/create_pki_for_flplan.py, 
+# bin/run_inference_from_flplan.py, bin/run_simulation_from_flplan.py,
+# bin/run_aggregator_from_flplan, bin/run_collaborator_from_flplan, and
+# bin/create_initial_weights_file_from_plan.py 
+
+aggregator_object_init:
+  init_kwargs:
+    rounds_to_train: 200
+    init_model_fname: pt_3dresunet_brainmagebrats_best_25.pbuf 
+    latest_model_fname: pt_3dresunet_brainmagebrats_latest_0.pbuf
+    best_model_fname: pt_3dresunet_brainmagebrats_best_0.pbuf
+
+model_object_init:
+  class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet
+  init_kwargs:
+    base_filters: 30
+    min_learning_rate: 0.000001
+    max_learning_rate: 0.001
+    learning_rate_cycles_per_epoch: 2.0
+    loss_function: dcce
+    opt: sgd
+    use_penalties: True
+
+collaborator_object_init:
+  init_kwargs:
+    polling_interval  : 4
+    opt_treatment     : 'CONTINUE_LOCAL'
+    send_model_deltas : False
+    epochs_per_round  : 1.0
+
+network_object_init:
+  defaults_file: defaults/network.yaml
+ 
+data_object_init:
+  class_to_init: fets.data.pytorch.gandlf_data.GANDLFData
+  data_name_in_local_config: test_init_path
+  init_kwargs: 
+    divisibility_factor: 16
+    percent_train: 0.8
+    in_memory: True
+    data_usage: 'train-val'
+    patch_sampler: 'uniform'
+    psize: [128, 128, 128]
+    q_max_length: 1  
+    q_samples_per_volume: 1 
+    q_num_workers: 0  
+    q_verbose: False
+    class_list: [0, 1, 2, 4]
+    data_augmentation:
+      'noise':
+        'mean': 0.0
+        'std': 0.1
+        'probability': 0.2
+      'rotate_90':
+        'axis': [1, 2, 3]
+        'probability': 0.5
+      'rotate_180':
+        'axis': [1, 2, 3]
+        'probability': 0.5
+      'flip':
+        'axes_to_flip': [0, 1, 2]
+        'probability': 1.0      
+    data_preprocessing:
+      'crop_external_zero_planes': null
+      'normalize_nonZero_masked': null
+                      
+
+inference:
+  allowed: True
+  kwargs:
+    output_file_tag: 'gandlf_data_resunet_0_seg'
+  
