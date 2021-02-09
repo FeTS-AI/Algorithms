@@ -36,7 +36,7 @@ from GANDLF.utils import one_hot
 
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
+from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels, clinical_dice_loss, clinical_dice_log_loss
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -140,6 +140,10 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = CE
         elif self.which_loss == 'mse':
             self.loss_fn = MCD_MSE_loss
+        elif self.which_loss == 'cdl':
+            self.loss_fn = clinical_dice_loss
+            elif self.which_loss == 'cdll':
+            self.loss_fn = clinical_dice_log_loss
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
@@ -401,7 +405,8 @@ class BrainMaGeModel(PyTorchFLModel):
                 # one-hot encoding of ground truth
                 mask = one_hot(mask, self.data.class_list)
                 # mask = mask.to(device)
-                curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
+                # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
+                curr_dice = clinical_dice(output.float(), mask.float()).cpu().data.item()
                 total_dice += curr_dice
                     
         #Computing the average dice
