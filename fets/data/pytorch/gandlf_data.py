@@ -50,7 +50,7 @@ class GANDLFData(object):
         self.feature_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
         self.label_tag = 'Label'
 
-        # GANDLF is going to expect numerical header names
+        # using numerical header names
         self.numeric_header_names = {mode: idx+1 for idx, mode in enumerate(self.feature_modes)}
         self.numeric_header_names[self.label_tag] = len(self.feature_modes) + 1
         # inverse of dictionary above
