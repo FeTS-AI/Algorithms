@@ -42,10 +42,7 @@ def clinical_dice(output, target, smooth=1e-7, **kwargs):
 
 def clinical_dice_loss(output, target, smooth=1e-7, **kwargs):
     clin_dice = clinical_dice(output, target, smooth, **kwargs)
-    if clin_dice <= 0:
-        return 0
-    else:
-        return 1 - clin_dice
+    return 1 - clin_dice
 
 
 def clinical_dice_log_loss(output, target, smooth=1e-7, **kwargs):
@@ -188,6 +185,5 @@ def MSE_loss(inp,target,num_classes):
 def MCD_MSE_loss(inp,target,num_classes):
     l = MCD_loss(inp,target,num_classes) + 0.1*MSE_loss(inp,target,num_classes)
     return l
-
 
 
