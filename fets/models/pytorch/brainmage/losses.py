@@ -25,15 +25,15 @@ def clinical_dice(output, target, smooth=1e-7):
     dice_for_enhancing = channel_dice(output_enhancing, target_enhancing)
     
     # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3)
-    output_whole = torch.max(output[:,1:,:,:],dim=1)
-    target_whole = torch.max(target[:,1:,:,:],dim=1)
+    output_whole = torch.max(output[:,1:,:,:],dim=1).values
+    target_whole = torch.max(target[:,1:,:,:],dim=1).values
     dice_for_whole = channel_dice(output_whole, target_whole)
     
     # tumor core ('1'|'4', ie channels 1 or 3)
     output_channels_1_3 = torch.cat([output[:,1,:,:], output[:,3,:,:]], dim=1)
-    output_core = torch.max(output_channels_1_3,dim=1)
+    output_core = torch.max(output_channels_1_3,dim=1).values
     target_channels_1_3 = torch.cat([target[:,1,:,:], target[:,3,:,:]],dim=1)
-    target_core = torch.max(target_channels_1_3,dim=1)
+    target_core = torch.max(target_channels_1_3,dim=1).values
     dice_for_core = channel_dice(output_core, target_core)
 
     # average the clinical dice scores
