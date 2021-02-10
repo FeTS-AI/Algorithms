@@ -41,7 +41,7 @@ def clinical_dice(output, target, smooth=1e-7):
 
 
 def clinical_dice_loss(output, target, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice_loss(output, target, smooth, **kwargs)
+    clin_dice = clinical_dice(output, target, smooth, **kwargs)
     if clin_dice <= 0:
         return 0
     else:
@@ -49,7 +49,7 @@ def clinical_dice_loss(output, target, smooth=1e-7, **kwargs):
 
 
 def clinical_dice_log_loss(output, target, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice_loss(output, target, smooth, **kwargs)
+    clin_dice = clinical_dice(output, target, smooth, **kwargs)
     if clin_dice <= 0:
         return 0
     else:
