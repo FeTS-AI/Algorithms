@@ -142,7 +142,7 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = MCD_MSE_loss
         elif self.which_loss == 'cdl':
             self.loss_fn = clinical_dice_loss
-            elif self.which_loss == 'cdll':
+        elif self.which_loss == 'cdll':
             self.loss_fn = clinical_dice_log_loss
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
