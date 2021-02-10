@@ -15,7 +15,7 @@ import numpy as np
 import torch
 
 
-def clinical_dice(output, target, smooth=1e-7):
+def clinical_dice(output, target, smooth=1e-7, **kwargs):
     assert output.shape[1] == 4
     assert target.shape[1] == 4
 
