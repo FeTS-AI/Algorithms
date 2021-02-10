@@ -14,18 +14,54 @@
 import numpy as np
 import torch
 
-def channel_dice_loss(output, target, smooth=1e-7):
-    output = output.contiguous().view(-1)
-    target = target.contiguous().view(-1)
-    intersection = (output * target).sum()
-    return 1 - ((2. * intersection + smooth) / (output.sum() + target.sum() + smooth))
+
+def clinical_dice(output, target, smooth=1e-7, **kwargs):
+    assert output.shape[1] == 4
+    assert target.shape[1] == 4
+
+    # enhancing_tumor ('4': ie channel 3)
+    output_enhancing = output[:,3,:,:]
+    target_enhancing = target[:,3,:,:]
+    dice_for_enhancing = channel_dice(output_enhancing, target_enhancing)
+    
+    # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3)
+    output_whole = torch.max(output[:,1:,:,:],dim=1).values
+    target_whole = torch.max(target[:,1:,:,:],dim=1).values
+    dice_for_whole = channel_dice(output_whole, target_whole)
+    
+    # tumor core ('1'|'4', ie channels 1 or 3)
+    output_channels_1_3 = torch.cat([output[:,1,:,:], output[:,3,:,:]], dim=1)
+    output_core = torch.max(output_channels_1_3,dim=1).values
+    target_channels_1_3 = torch.cat([target[:,1,:,:], target[:,3,:,:]],dim=1)
+    target_core = torch.max(target_channels_1_3,dim=1).values
+    dice_for_core = channel_dice(output_core, target_core)
+
+    # average the clinical dice scores
+    return (dice_for_enhancing + dice_for_whole + dice_for_core) / 3
 
 
-def channel_log_dice_loss(output, target, smooth=1e-7):
-    output = output.contiguous().view(-1)
-    target = target.contiguous().view(-1)
-    intersection = (output * target).sum()
-    return -np.log((2. * intersection + smooth) / (output.sum() + target.sum() + smooth))
+def clinical_dice_loss(output, target, smooth=1e-7, **kwargs):
+    clin_dice = clinical_dice(output, target, smooth, **kwargs)
+    if clin_dice <= 0:
+        return 0
+    else:
+        return 1 - clin_dice
+
+
+def clinical_dice_log_loss(output, target, smooth=1e-7, **kwargs):
+    clin_dice = clinical_dice(output, target, smooth, **kwargs)
+    if clin_dice <= 0:
+        return 0
+    else:
+        return - torch.log(clin_dice)
+
+
+def channel_dice_loss(output, target, smooth=1e-7, **kwargs):
+    return 1 - channel_dice(output, target, smooth=1e-7, **kwargs)
+
+
+def channel_log_dice_loss(output, target, smooth=1e-7, **kwargs):
+    return -np.log(channel_dice(output, target, smooth=1e-7, **kwargs))
 
 def channel_dice(output, target, smooth=1e-7, **kwargs):
     output = output.contiguous().view(-1)
@@ -69,11 +105,12 @@ def dice_loss(output, target, binary_classification, **kwargs):
 
 
 def log_dice_loss(output, target, binary_classification, **kwargs):
-    return ave_loss_over_channels(output=output, 
-                                  target=target, 
-                                  binary_classification=binary_classification, 
-                                  channel_loss_fn=channel_log_dice_loss, 
-                                  **kwargs)
+    raise NotImplemented('Find and fix this code')
+    # return ave_loss_over_channels(output=output, 
+    #                               target=target, 
+    #                               binary_classification=binary_classification, 
+    #                               channel_loss_fn=channel_log_dice_loss, 
+    #                               **kwargs)
 
 
 def MCD_loss(pm, gt, num_classes, weights = None, **kwargs):
@@ -96,7 +133,7 @@ def dice(out, target):
     intersection = (oflat * tflat).sum()
     return (2*intersection+smooth)/(oflat.sum()+tflat.sum()+smooth)
 
-
+# TODO: make the cross entropy w.r.t. something more like probabilities.
 def CE(out,target, **kwargs):
     if bool(torch.sum(target) == 0): # contingency for empty mask
         return 0
