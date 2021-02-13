@@ -19,7 +19,7 @@ def clinical_dice(output, target, smooth=1e-7, class_list, **kwargs):
     assert output.shape[1] == 4
     assert target.shape[1] == 4
 
-    # This is a hack for now. We detect two use_cases here, and force a change in the code when another is wanted.
+    # We detect two use_cases here, and force a change in the code when another is wanted.
     if set(class_list) = set([0, 1, 2, 4]):
         clinical_labels = False
     # for this case we are not planning on having model track the '0' class
