@@ -63,13 +63,22 @@ def clinical_dice(output, target, class_list, smooth=1e-7, **kwargs):
     return ave_dice
 
 
-def clinical_dice_loss(output, target, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice(output, target, smooth, **kwargs)
+def clinical_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    clin_dice = clinical_dice(output=output, 
+                              target=target, 
+                              class_list=class_list, 
+                              smooth=smooth, 
+                              **kwargs)
     return 1 - clin_dice
 
 
-def clinical_dice_log_loss(output, target, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice(output, target, smooth, **kwargs)
+def clinical_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    clin_dice = clinical_dice(output=output, 
+                              target=target, 
+                              class_list=class_list, 
+                              smooth=smooth, 
+                              **kwargs)
+                              
     if clin_dice <= 0:
         return 0
     else:
@@ -77,11 +86,17 @@ def clinical_dice_log_loss(output, target, smooth=1e-7, **kwargs):
 
 
 def channel_dice_loss(output, target, smooth=1e-7, **kwargs):
-    return 1 - channel_dice(output, target, smooth=1e-7, **kwargs)
+    return 1 - channel_dice(output=output, 
+                            target=target, 
+                            smooth=smooth, 
+                            **kwargs)
 
 
 def channel_log_dice_loss(output, target, smooth=1e-7, **kwargs):
-    return -np.log(channel_dice(output, target, smooth=1e-7, **kwargs))
+    return -np.log(channel_dice(output=output, 
+                                target=target, 
+                                smooth=smooth, 
+                                **kwargs))
 
 def channel_dice(output, target, smooth=1e-7, **kwargs):
     output = output.contiguous().view(-1)
