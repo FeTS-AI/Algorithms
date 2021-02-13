@@ -36,25 +36,25 @@ def clinical_dice(output, target, class_list, smooth=1e-7, **kwargs):
         num_output_channels = output.shape[1]
         total_dice = 0
         for channel in range(num_output_channels):
-            total_dice += channel_dice(output[:,channel,:,:], target[:,channel,:,:])
+            total_dice += channel_dice(output[:,channel,:,:,:], target[:,channel,:,:,:])
         ave_dice = total_dice / num_output_channels
         
     else:
 
         # enhancing_tumor ('4': ie channel 3)
-        output_enhancing = output[:,3,:,:]
-        target_enhancing = target[:,3,:,:]
+        output_enhancing = output[:,3,:,:,:]
+        target_enhancing = target[:,3,:,:,:]
         dice_for_enhancing = channel_dice(output_enhancing, target_enhancing)
     
         # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3)
-        output_whole = torch.max(output[:,1:,:,:],dim=1).values
-        target_whole = torch.max(target[:,1:,:,:],dim=1).values
+        output_whole = torch.max(output[:,1:,:,:,:],dim=1).values
+        target_whole = torch.max(target[:,1:,:,:,:],dim=1).values
         dice_for_whole = channel_dice(output_whole, target_whole)
     
         # tumor core ('1'|'4', ie channels 1 or 3)
-        output_channels_1_3 = torch.cat([output[:,1,:,:], output[:,3,:,:]], dim=1)
+        output_channels_1_3 = torch.cat([output[:,1,:,:,:], output[:,3,:,:,:]], dim=1)
         output_core = torch.max(output_channels_1_3,dim=1).values
-        target_channels_1_3 = torch.cat([target[:,1,:,:], target[:,3,:,:]],dim=1)
+        target_channels_1_3 = torch.cat([target[:,1,:,:,:], target[:,3,:,:,:]],dim=1)
         target_core = torch.max(target_channels_1_3,dim=1).values
         dice_for_core = channel_dice(output_core, target_core)
 
@@ -107,8 +107,8 @@ def channel_dice(output, target, smooth=1e-7, **kwargs):
 def average_dice_over_channels(output, target, binary_classification, **kwargs):
     if not binary_classification:
         # we will not count the background class (here in dim=0 of axis=1)
-        output = output[:,1:,:,:]
-        target = target[:,1:,:,:]
+        output = output[:,1:,:,:,:]
+        target = target[:,1:,:,:,:]
     total_dice = 0
     nb_nonbackground_classes = output.shape[1]
     for dim in range(nb_nonbackground_classes):
@@ -120,8 +120,8 @@ def average_dice_over_channels(output, target, binary_classification, **kwargs):
 def ave_loss_over_channels(output, target, binary_classification, channel_loss_fn, **kwargs):
     if not binary_classification:
         # we will not count the background class (here in dim=0 of axis=1)
-        output = output[:,1:,:,:]
-        target = target[:,1:,:,:]
+        output = output[:,1:,:,:,:]
+        target = target[:,1:,:,:,:]
     total_dice = 0
     nb_nonbackground_classes = output.shape[1]
     for dim in range(nb_nonbackground_classes):

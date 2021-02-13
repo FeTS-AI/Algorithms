@@ -348,9 +348,13 @@ class GANDLFData(object):
         if original_shape[1] != len(self.feature_modes):
             raise ValueError('Expected scaning modes to be eunumerated along axis 1 of features.')
 
-        # crop function will expect the batch dimension is stripped
-        squeezed_features = torch.squeeze(features, dim=0)
-        small_idx_corner, large_idx_corner, cropped_features = crop_image_outside_zeros(array=squeezed_features, psize = self.psize)
+        # crop function will expect a numpy array, and that the batch dimension is stripped
+        features_np = features.numpy().copy()
+        squeezed_features_np = np.squeeze(features_np, axis=0)
+        small_idx_corner, large_idx_corner, cropped_features_np = crop_image_outside_zeros(array=squeezed_features_np, psize = self.psize)
+        # convert back to torch tensor
+        cropped_features = torch.tensor(cropped_features_np)
+        
 
         # we will not track how many indices are added during this padding, as the associated output
         # indices will be ignored (since these are associated with input pixels of zeros, they will
@@ -362,18 +366,25 @@ class GANDLFData(object):
 
         # perform inference
         output_of_cropped = model_inference_function(X=final_features)
-
-        # prepare final output by initializing with all zeros (and using appropriate shape)
         # some sanity checks using our assumptions of: 
-        #     5 total axes: (batches=1, spacial_x, num_classes, spacial_y, spacial_z)
+        #     5 total axes: (batches=1, num_classes, spacial_x, spacial_y, spacial_z)
         prelim_shape = output_of_cropped.shape
-        if (len(prelim_shape) != 5) or (prelim_shape[0] != 1) or (prelim_shape[2] != len(self.class_list)):
+        if (len(prelim_shape) != 5) or (prelim_shape[0] != 1) or (prelim_shape[1] != len(self.class_list)):
             raise ValueError('Expected shape [1, num_classes, spacial_x, spacial_y, spacial_z] of cropped-feature output and found ', output_of_cropped.shape)
-        output_shape = [1, original_shape[2], len(self.class_list), original_shape[3], original_shape[4]] 
-        output = torch.zeros(size=output_shape)
+        
+        output_shape = [1, len(self.class_list), original_shape[2], original_shape[3], original_shape[4]] 
 
-        # write in non-zero values using the output of cropped features
-        output[:,small_idx_corner[0]:large_idx_corner[0],:,small_idx_corner[1]:large_idx_corner[1], small_idx_corner[2]:large_idx_corner[2]] = \
+        # prepare final output by initializing with all background (using appropriate class encoding)
+        # checking against two use-cases (will need to change to accomadate others)
+        output = torch.zeros(size=output_shape)
+        if self.class_list == [0, 1, 2 , 4]:
+            # in this case, background is encoded in the first output channel
+            output[:,0,:,:,:] = 1
+        elif not (set(self.class_list) == set(['4', '1||2||4', '1||4'])):
+            raise ValueError('Supporting class list of {} is not present.'.format(self.class_list))
+  
+        # write in non-background output using the output of cropped features
+        output[:, :, small_idx_corner[0]:large_idx_corner[0],small_idx_corner[1]:large_idx_corner[1], small_idx_corner[2]:large_idx_corner[2]] = \
             output_of_cropped[:,:large_idx_corner[0],:,:large_idx_corner[1],:large_idx_corner[2]]
         
         return output
