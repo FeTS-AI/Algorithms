@@ -15,29 +15,49 @@ import numpy as np
 import torch
 
 
-def clinical_dice(output, target, smooth=1e-7, **kwargs):
+def clinical_dice(output, target, smooth=1e-7, class_list, **kwargs):
     assert output.shape[1] == 4
     assert target.shape[1] == 4
 
-    # enhancing_tumor ('4': ie channel 3)
-    output_enhancing = output[:,3,:,:]
-    target_enhancing = target[:,3,:,:]
-    dice_for_enhancing = channel_dice(output_enhancing, target_enhancing)
-    
-    # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3)
-    output_whole = torch.max(output[:,1:,:,:],dim=1).values
-    target_whole = torch.max(target[:,1:,:,:],dim=1).values
-    dice_for_whole = channel_dice(output_whole, target_whole)
-    
-    # tumor core ('1'|'4', ie channels 1 or 3)
-    output_channels_1_3 = torch.cat([output[:,1,:,:], output[:,3,:,:]], dim=1)
-    output_core = torch.max(output_channels_1_3,dim=1).values
-    target_channels_1_3 = torch.cat([target[:,1,:,:], target[:,3,:,:]],dim=1)
-    target_core = torch.max(target_channels_1_3,dim=1).values
-    dice_for_core = channel_dice(output_core, target_core)
+    # We detect two use_cases here, and force a change in the code when another is wanted.
+    # In this case we depend on correct ordering of class_list.
+    if list(class_list) = [0, 1, 2, 4]:
+        clinical_labels = False
+    # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
+    elif isinstance(class_list[0], str) and len(class_list)==3:
+        clinical_labels = True
+    else:
+        raise ValueError('clinical dice is not yet designed for this model class_list: ', class_list)
 
-    # average the clinical dice scores
-    return (dice_for_enhancing + dice_for_whole + dice_for_core) / 3
+    if clinical_labels:
+        num_output_channels = output.shape[1]
+        total_dice = 0
+        for channel in range(num_output_channels):
+            total_dice += channel_dice(output[:,channel,:,:], target[:,channel,:,:])
+        ave_dice = total_dice / num_output_channels
+        
+    else:
+
+        # enhancing_tumor ('4': ie channel 3)
+        output_enhancing = output[:,3,:,:]
+        target_enhancing = target[:,3,:,:]
+        dice_for_enhancing = channel_dice(output_enhancing, target_enhancing)
+    
+        # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3)
+        output_whole = torch.max(output[:,1:,:,:],dim=1).values
+        target_whole = torch.max(target[:,1:,:,:],dim=1).values
+        dice_for_whole = channel_dice(output_whole, target_whole)
+    
+        # tumor core ('1'|'4', ie channels 1 or 3)
+        output_channels_1_3 = torch.cat([output[:,1,:,:], output[:,3,:,:]], dim=1)
+        output_core = torch.max(output_channels_1_3,dim=1).values
+        target_channels_1_3 = torch.cat([target[:,1,:,:], target[:,3,:,:]],dim=1)
+        target_core = torch.max(target_channels_1_3,dim=1).values
+        dice_for_core = channel_dice(output_core, target_core)
+
+        ave_dice = (dice_for_enhancing + dice_for_whole + dice_for_core) / 3
+
+    return ave_dice
 
 
 def clinical_dice_loss(output, target, smooth=1e-7, **kwargs):
