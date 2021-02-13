@@ -16,8 +16,11 @@ import torch
 
 
 def clinical_dice(output, target, class_list, smooth=1e-7, **kwargs):
-    assert output.shape[1] == 4
-    assert target.shape[1] == 4
+    # some sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output and target going into clinical_dice do not match.')
+    if output.shape[1] != len(class_list):
+        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
 
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In this case we depend on correct ordering of class_list.
