@@ -140,7 +140,7 @@ def dice_loss(output, target, binary_classification, **kwargs):
 
 
 def log_dice_loss(output, target, binary_classification, **kwargs):
-    raise NotImplemented('Find and fix this code')
+    raise NotImplementedError('Find and fix this code')
     # return ave_loss_over_channels(output=output, 
     #                               target=target, 
     #                               binary_classification=binary_classification, 
