@@ -396,11 +396,11 @@ class BrainMaGeModel(PyTorchFLModel):
                     mask = subject['label'][torchio.DATA]
 
                     if self.infer_gandlf_images_with_cropping:
-                        output = self.data.infer_with_single_crop(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
-                                                                  features=features)
+                        output = self.data.infer_with_crop(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
+                                                           features=features)
                     else:
-                        output = self.data.infer_with_patches(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
-                                                              features=features)
+                        output = self.data.infer_with_crop_and_patches(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
+                                                                       features=features)
 
                     
                 

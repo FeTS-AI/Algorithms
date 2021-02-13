@@ -295,50 +295,20 @@ class GANDLFData(object):
         current_shape = array.shape
         current_shape_list = list(current_shape)
         new_shape = []
-        added_indices_above_largest_ones = [0 for _ in current_shape]
         for idx, dim in enumerate(current_shape_list):
             if idx in axes_to_skip:
                 new_shape.append(dim)
             else:
                 remainder = dim % self.divisibility_factor
                 indices_to_add = self.divisibility_factor - remainder
-                added_indices_above_largest_ones[idx] = indices_to_add
                 new_shape.append(dim + indices_to_add)
         zero_padded_array = torch.zeros(new_shape)
         slices = [slice(0,dim) for dim in current_shape]
         zero_padded_array[tuple(slices)] = array
-        return added_indices_above_largest_ones, zero_padded_array 
+        return zero_padded_array 
 
-    def infer_with_patches(model_inference_function, features):
-        # Get outputs for multiple patches - fusing the outputs
-
-        # zero pad to satisfy divisibility factor criterion 
-        # (relying here on features and mask being the same shape as well as determinism in the padding algo 
-        
-        # record original feature shape
-        original_shape = list(features.shape)
-
-        # crop function will expect the batch dimension is stripped
-        squeezed_features = torch.squeeze(features, dim=0)
-        small_idx_corner, large_idx_corner, cropped_features = crop_image_outside_zeros(array=squeezed_features)
-        added_indices_above_largest_ones, final_features = self.zero_pad(array=cropped_features)
-        if (len(added_indices_above_largest_ones) != len(final_features)) or (len(final_features) != len(cropped_feartures)):
-            raise ValueError('Tensor size miss-match when cropping and padding!')
-
-        # keeping track of where the final_features are taken from, relative to the original ones
-        # note that final_features may extend beyond the indices of the original one (on top)
-        # when this comparison is made
-        
-        #preparing a mask to record this comparison
-        location_mask = torch.zeros(size=features.shape).astype(bool)
-        WORKING HERE
-
-        output = model_inference_function(X=features)
-
-    def infer_with_single_crop(model_inference_function,features):
-        # used only when using the gandlf_data object
-        # (will we crop external zero-planes, infer, then pad output with zeros OR
-        #  get outputs for multiple patches - fusing the outputs)
+    def infer_with_patches(self, model_inference_function, features):
+        # This function infers using multiple patches, fusing corresponding outputs
         subject_dict = {}
         for i in range(0, features.shape[1]): # 0 is batch
             subject_dict[str(i)] = torchio.Image(tensor = features[:,i,:,:,:], type=torchio.INTENSITY)
@@ -356,6 +326,61 @@ class GANDLFData(object):
         output = aggregator.get_output_tensor() # this is the final mask
         output = output.unsqueeze(0) # increasing the number of dimension of the mask
         return output
+
+    def infer_with_crop_and_patches(self, model_inference_function,features):
+        # crops external zero-planes (tracking indices cropped), infers the cropped image with patches, then pads the output 
+        # with zeros to restore the original shape
+
+        return self.infer_with_crop(model_inference_function=self.infer_with_patches, features=features)
+        
+
+    def infer_with_crop(self, model_inference_function, features):
+        # crops external zero-planes (tracking indices cropped), infers the cropped image in one pass, then pads the output 
+        # with zeros to restore the original shape
+
+        # record original feature shape
+        original_shape = list(features.shape)
+        # sanity check on expected shape (assumptions used to detect physical dimensions to construct a properly shaped output)
+        if len(original_shape) != 5:
+            raise ValueError('Expected features shape to be of length 5.')
+        if original_shape[0] != 1:
+            raise ValueError('Expected batch dimension to be 1 in features.')
+        if original_shape[1] != len(self.feature_modes):
+            raise ValueError('Expected scaning modes to be eunumerated along axis 1 of features.')
+
+        # crop function will expect the batch dimension is stripped
+        squeezed_features = torch.squeeze(features, dim=0)
+        small_idx_corner, large_idx_corner, cropped_features = crop_image_outside_zeros(array=squeezed_features, psize = self.psize)
+
+        # we will not track how many indices are added during this padding, as the associated output
+        # indices will be ignored (since these are associated with input pixels of zeros, they will
+        # either get replaced by output of zero or dropped when they extend above original image size)
+        final_features = self.zero_pad(array=cropped_features)
+
+        # put back in batch dimension (including in cropped idx info)
+        final_features = final_features.unsqueeze(0)
+
+        # perform inference
+        output_of_cropped = model_inference_function(X=final_features)
+
+        # prepare final output by initializing with all zeros (and using appropriate shape)
+        # some sanity checks using our assumptions of: 
+        #     5 total axes: (batches=1, spacial_x, num_classes, spacial_y, spacial_z)
+        prelim_shape = output_of_cropped.shape
+        if (len(prelim_shape) != 5) or (prelim_shape[0] != 1) or (prelim_shape[2] != len(self.class_list)):
+            raise ValueError('Expected shape [1, num_classes, spacial_x, spacial_y, spacial_z] of cropped-feature output and found ', output_of_cropped.shape)
+        output_shape = [1, original_shape[2], len(self.class_list), original_shape[3], original_shape[4]] 
+        output = torch.zeros(size=output_shape)
+
+        # write in non-zero values using the output of cropped features
+        output[:,small_idx_corner[0]:large_idx_corner[0],:,small_idx_corner[1]:large_idx_corner[1], small_idx_corner[2]:large_idx_corner[2]] = \
+            output_of_cropped[:,:large_idx_corner[0],:,:large_idx_corner[1],:large_idx_corner[2]]
+        
+        return output
+
+        
+
+    
 
     def get_train_loader(self):
         return self.train_loader
