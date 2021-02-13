@@ -21,7 +21,7 @@ def clinical_dice(output, target, smooth=1e-7, class_list, **kwargs):
 
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In this case we depend on correct ordering of class_list.
-    if list(class_list) = [0, 1, 2, 4]:
+    if list(class_list) == [0, 1, 2, 4]:
         clinical_labels = False
     # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
     elif isinstance(class_list[0], str) and len(class_list)==3:
