@@ -390,27 +390,27 @@ class BrainMaGeModel(PyTorchFLModel):
         
                 output = self.infer_batch_with_no_numpy_conversion(X=features)
                     
-                # using the gandlf loader   
-                else:
-                    features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
-                    mask = subject['label'][torchio.DATA]
+            # using the gandlf loader   
+            else:
+                features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                mask = subject['label'][torchio.DATA]
 
-                    if self.infer_gandlf_images_with_cropping:
-                        output = self.data.infer_with_crop(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
-                                                           features=features)
-                    else:
-                        output = self.data.infer_with_crop_and_patches(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
-                                                                       features=features)
+                if self.infer_gandlf_images_with_cropping:
+                    output = self.data.infer_with_crop(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
+                                                        features=features)
+                else:
+                    output = self.data.infer_with_crop_and_patches(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
+                                                                    features=features)
 
                     
                 
-                # one-hot encoding of ground truth
-                mask = one_hot(mask, self.data.class_list)
-                # mask = mask.to(device)
-                # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
-                curr_dice = clinical_dice(output.float(), mask.float(), class_list=self.data.class_list).cpu().data.item()
-                total_dice += curr_dice
-                    
+            # one-hot encoding of ground truth
+            mask = one_hot(mask, self.data.class_list)
+            # mask = mask.to(device)
+            # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
+            curr_dice = clinical_dice(output.float(), mask.float(), class_list=self.data.class_list).cpu().data.item()
+            total_dice += curr_dice
+                
         #Computing the average dice
         average_dice = total_dice/len(val_loader)
 
