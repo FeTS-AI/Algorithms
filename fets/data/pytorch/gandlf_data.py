@@ -19,6 +19,49 @@ from fets.data.gandlf_utils import get_dataframe_and_headers
 from fets.data import get_appropriate_file_paths_from_subject_dir
 
 
+# adapted from https://codereview.stackexchange.com/questions/132914/crop-black-border-of-image-using-numpy/132933#132933
+def crop_image_outside_zeros(array, psize):
+    dimensions = len(array.shape)
+    if dimensions != 4:
+        raise ValueError("Array expected to be 4D but got {} dimensions.".format(dimensions)) 
+    
+    # collapse to single channel and get the mask of non-zero voxels
+    mask = array.sum(axis=0) > 0
+
+    # get the small and large corners
+
+    m0 = mask.any(1).any(1)
+    m1 = mask.any(0)
+    m2 = m1.any(0)
+    m1 = m1.any(1)
+    
+    small = [m0.argmax(), m1.argmax(), m2.argmax()]
+    large = [m0[::-1].argmax(), m1[::-1].argmax(), m2[::-1].argmax()]
+    large = [m - l for m, l in zip(mask.shape, large)]
+    
+    # ensure we have a full patch
+    # for each axis
+    for i in range(3):
+        # if less than patch size, extend the small corner out
+        if large[i] - small[i] < psize[i]:
+            small[i] = large[i] - psize[i]
+
+        # if bottom fell off array, extend the large corner and set small to 0
+        if small[i] < 0:
+            small[i] = 0
+            large[i] = psize[i]
+
+    # calculate pixel location of new bounding box corners
+    small_idx_corner = [small[0], small[1], small[2]]
+    large_idx_corner = [large[0], large[1], large[2]]
+    # Get the contents of the bounding box from the array
+    new_array = array[:,
+                    small[0]:large[0],
+                    small[1]:large[1],
+                    small[2]:large[2]]
+    
+    return small_idx_corner, large_idx_corner, new_array
+
 
     
 
@@ -246,21 +289,73 @@ class GANDLFData(object):
 
         return loader, companion_loader
 
-    def zero_pad(self, array, axes_to_skip=[0,1]):
+    def zero_pad(self, array, axes_to_skip=[0]):
         # zero pads in order to obtain a new array which is properly divisible in all appropriate dimensions
+        # padding is done on top of highest indices across all dimensions
         current_shape = array.shape
         current_shape_list = list(current_shape)
         new_shape = []
+        added_indices_above_largest_ones = [0 for _ in current_shape]
         for idx, dim in enumerate(current_shape_list):
             if idx in axes_to_skip:
                 new_shape.append(dim)
             else:
                 remainder = dim % self.divisibility_factor
-                new_shape.append(dim + self.divisibility_factor - remainder)
+                indices_to_add = self.divisibility_factor - remainder
+                added_indices_above_largest_ones[idx] = indices_to_add
+                new_shape.append(dim + indices_to_add)
         zero_padded_array = torch.zeros(new_shape)
         slices = [slice(0,dim) for dim in current_shape]
         zero_padded_array[tuple(slices)] = array
-        return zero_padded_array 
+        return added_indices_above_largest_ones, zero_padded_array 
+
+    def infer_with_patches(model_inference_function, features):
+        # Get outputs for multiple patches - fusing the outputs
+
+        # zero pad to satisfy divisibility factor criterion 
+        # (relying here on features and mask being the same shape as well as determinism in the padding algo 
+        
+        # record original feature shape
+        original_shape = list(features.shape)
+
+        # crop function will expect the batch dimension is stripped
+        squeezed_features = torch.squeeze(features, dim=0)
+        small_idx_corner, large_idx_corner, cropped_features = crop_image_outside_zeros(array=squeezed_features)
+        added_indices_above_largest_ones, final_features = self.zero_pad(array=cropped_features)
+        if (len(added_indices_above_largest_ones) != len(final_features)) or (len(final_features) != len(cropped_feartures)):
+            raise ValueError('Tensor size miss-match when cropping and padding!')
+
+        # keeping track of where the final_features are taken from, relative to the original ones
+        # note that final_features may extend beyond the indices of the original one (on top)
+        # when this comparison is made
+        
+        #preparing a mask to record this comparison
+        location_mask = torch.zeros(size=features.shape).astype(bool)
+        WORKING HERE
+
+        output = model_inference_function(X=features)
+
+    def infer_with_single_crop(model_inference_function,features):
+        # used only when using the gandlf_data object
+        # (will we crop external zero-planes, infer, then pad output with zeros OR
+        #  get outputs for multiple patches - fusing the outputs)
+        subject_dict = {}
+        for i in range(0, features.shape[1]): # 0 is batch
+            subject_dict[str(i)] = torchio.Image(tensor = features[:,i,:,:,:], type=torchio.INTENSITY)
+        
+        grid_sampler = torchio.inference.GridSampler(torchio.Subject(subject_dict), self.psize)
+        patch_loader = torch.utils.data.DataLoader(grid_sampler, batch_size=1)
+        aggregator = torchio.inference.GridAggregator(grid_sampler)
+
+        for patches_batch in patch_loader:
+            # concatenate the different modalities into a tensor
+            image = torch.cat([patches_batch[str(i)][torchio.DATA] for i in range(0, features.shape[1])], dim=1)
+            locations = patches_batch[torchio.LOCATION] # get location of patch
+            pred_mask = model_inference_function(X=image)
+            aggregator.add_batch(pred_mask, locations)
+        output = aggregator.get_output_tensor() # this is the final mask
+        output = output.unsqueeze(0) # increasing the number of dimension of the mask
+        return output
 
     def get_train_loader(self):
         return self.train_loader

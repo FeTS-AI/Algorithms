@@ -91,7 +91,8 @@ class BrainMaGeModel(PyTorchFLModel):
                  n_channels=4,
                  psize=[128,128,128],
                  smooth=1e-7,
-                 use_penalties=False,
+                 use_penalties=False, 
+                 infer_gandlf_images_with_cropping = False,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
         
@@ -130,6 +131,11 @@ class BrainMaGeModel(PyTorchFLModel):
         self.smooth = smooth
         self.which_model = self.__repr__()
         self.use_panalties = use_penalties
+
+        # used only when using the gandlf_data object
+        # (will we crop external zero-planes, infer, then pad output with zeros OR
+        #  get outputs for multiple patches - fusing the outputs)
+        self.infer_gandlf_images_with_cropping = infer_gandlf_images_with_cropping
         
         ############### CHOOSING THE LOSS FUNCTION ###################
         if self.which_loss == 'dc':
@@ -251,6 +257,24 @@ class BrainMaGeModel(PyTorchFLModel):
 
         return dice_weights_dict, dice_penalty_dict
 
+    def infer_batch_with_no_numpy_conversion(self, X):
+        """Very similar to base model infer_batch, but does not
+           explicitly convert the output to numpy.
+           Run inference on a batch
+        Args:
+            X: Input for batch
+        Gets the outputs for the inputs provided.
+        """
+
+        device = torch.device(self.device)
+        self.eval()
+
+        with torch.no_grad():
+            X = X.to(device)
+            output = self(X.float())
+            output = output.cpu()
+        return output
+
     def train_batches(self, num_batches, use_tqdm=False):
         num_subjects = num_batches
         
@@ -347,8 +371,6 @@ class BrainMaGeModel(PyTorchFLModel):
         return {"loss": total_loss / num_subject_grads, "num_nan_losses": num_nan_losses, "num_samples_used": num_subjects }
 
     def validate(self, use_tqdm=False):
-        device = torch.device(self.device)       
-        self.eval()
         
         total_dice = 0
         
@@ -361,46 +383,26 @@ class BrainMaGeModel(PyTorchFLModel):
             val_loader = tqdm.tqdm(val_loader, desc="validate")
 
         for subject in val_loader:
-            with torch.no_grad():
-                # this is when we are using pt_brainmagedata
-                if ('features' in subject.keys()) and ('gt' in subject.keys()):
-                    features = subject['features']
-                    mask = subject['gt']
-            
-                    features = features.to(device)
-                    output = self(features.float())
-                    output = output.cpu()
+            # this is when we are using pt_brainmagedata
+            if ('features' in subject.keys()) and ('gt' in subject.keys()):
+                features = subject['features']
+                mask = subject['gt']
+        
+                output = self.infer_batch_with_no_numpy_conversion(X=features)
                     
-                # this is when we are using gandlf loader   
+                # using the gandlf loader   
                 else:
                     features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                     mask = subject['label'][torchio.DATA]
 
-                    # # TODO: For now we zero-pad the validation images to satisfy the divisibility criterion
-                    # features = self.data.zero_pad(features)
-                    # mask = self.data.zero_pad(mask)
-                    # print("\n\nValidation features with shape: {}\n".format(features.shape))
-                    
-                    ### aggregated mask validation
-                    subject_dict = {}
-                    for i in range(0, features.shape[1]): # 0 is batch
-                        subject_dict[str(i)] = torchio.Image(tensor = features[:,i,:,:,:], type=torchio.INTENSITY)
-                    
-                    grid_sampler = torchio.inference.GridSampler(torchio.Subject(subject_dict), self.psize)
-                    patch_loader = torch.utils.data.DataLoader(grid_sampler, batch_size=1)
-                    aggregator = torchio.inference.GridAggregator(grid_sampler)
+                    if self.infer_gandlf_images_with_cropping:
+                        output = self.data.infer_with_single_crop(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
+                                                                  features=features)
+                    else:
+                        output = self.data.infer_with_patches(model_inference_function=self.infer_batch_with_no_numpy_conversion, 
+                                                              features=features)
 
-                    for patches_batch in patch_loader:
-                        # concatenate the different modalities into a tensor
-                        image = torch.cat([patches_batch[str(i)][torchio.DATA] for i in range(0, features.shape[1])], dim=1)
-                        locations = patches_batch[torchio.LOCATION] # get location of patch
-                        image = image.to(device) # this should happen where "device" is defined
-                        pred_mask = self(image.float()) # this should happen where "model" is defined
-                        aggregator.add_batch(pred_mask, locations)
-                    output = aggregator.get_output_tensor() # this is the final mask
-                    output = output.cpu() # sending to cpu because of memory constraints 
-                    output = output.unsqueeze(0) # increasing the number of dimension of the mask
-                    ### aggregated mask validation
+                    
                 
                 # one-hot encoding of ground truth
                 mask = one_hot(mask, self.data.class_list)
