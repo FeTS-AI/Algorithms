@@ -15,13 +15,16 @@ import numpy as np
 import torch
 
 
-def clinical_dice(output, target, smooth=1e-7, class_list, **kwargs):
-    assert output.shape[1] == 4
-    assert target.shape[1] == 4
+def clinical_dice(output, target, class_list, smooth=1e-7, **kwargs):
+    # some sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output and target going into clinical_dice do not match.')
+    if output.shape[1] != len(class_list):
+        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
 
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In this case we depend on correct ordering of class_list.
-    if list(class_list) = [0, 1, 2, 4]:
+    if list(class_list) == [0, 1, 2, 4]:
         clinical_labels = False
     # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
     elif isinstance(class_list[0], str) and len(class_list)==3:
