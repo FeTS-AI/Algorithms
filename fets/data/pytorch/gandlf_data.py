@@ -385,7 +385,7 @@ class GANDLFData(object):
   
         # write in non-background output using the output of cropped features
         output[:, :, small_idx_corner[0]:large_idx_corner[0],small_idx_corner[1]:large_idx_corner[1], small_idx_corner[2]:large_idx_corner[2]] = \
-            output_of_cropped[:,:large_idx_corner[0],:,:large_idx_corner[1],:large_idx_corner[2]]
+            output_of_cropped[:,:,:large_idx_corner[0]-small_idx_corner[0],:large_idx_corner[1]-small_idx_corner[1],:large_idx_corner[2]-small_idx_corner[2]]
         
         return output
 
