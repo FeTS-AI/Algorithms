@@ -7,6 +7,7 @@ import os
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
 import numpy as np
 import torch
+import torchio
 import pandas as pd
 
 from torch.utils.data import DataLoader
