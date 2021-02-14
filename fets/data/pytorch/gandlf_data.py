@@ -335,7 +335,7 @@ class GANDLFData(object):
         # crops external zero-planes (tracking indices cropped), infers the cropped image with patches, then pads the output 
         # with zeros to restore the original shape
 
-        return self.infer_with_crop(model_inference_function=[self.infer_with_patches, model_inference_function], features=features)
+        return self.infer_with_crop(model_inference_function=[self.infer_with_patches] + model_inference_function, features=features)
         
 
     def infer_with_crop(self, model_inference_function, features):
