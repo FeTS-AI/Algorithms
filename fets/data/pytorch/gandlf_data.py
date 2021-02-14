@@ -309,6 +309,9 @@ class GANDLFData(object):
 
     def infer_with_patches(self, model_inference_function, features):
         # This function infers using multiple patches, fusing corresponding outputs
+
+        # model_inference_function is a list to suport recursive calls to similar function
+
         subject_dict = {}
         for i in range(0, features.shape[1]): # 0 is batch
             subject_dict[str(i)] = torchio.Image(tensor = features[:,i,:,:,:], type=torchio.INTENSITY)
@@ -321,7 +324,7 @@ class GANDLFData(object):
             # concatenate the different modalities into a tensor
             image = torch.cat([patches_batch[str(i)][torchio.DATA] for i in range(0, features.shape[1])], dim=1)
             locations = patches_batch[torchio.LOCATION] # get location of patch
-            pred_mask = model_inference_function(X=image)
+            pred_mask = model_inference_function[0](model_inference_function=model_inference_function[1:], features=image)
             aggregator.add_batch(pred_mask, locations)
         output = aggregator.get_output_tensor() # this is the final mask
         output = output.unsqueeze(0) # increasing the number of dimension of the mask
@@ -331,12 +334,14 @@ class GANDLFData(object):
         # crops external zero-planes (tracking indices cropped), infers the cropped image with patches, then pads the output 
         # with zeros to restore the original shape
 
-        return self.infer_with_crop(model_inference_function=self.infer_with_patches, features=features)
+        return self.infer_with_crop(model_inference_function=[self.infer_with_patches, model_inference_function], features=features)
         
 
     def infer_with_crop(self, model_inference_function, features):
         # crops external zero-planes (tracking indices cropped), infers the cropped image in one pass, then pads the output 
         # with zeros to restore the original shape
+
+        # model_inference_function is a list to suport recursive calls to similar function
 
         # record original feature shape
         original_shape = list(features.shape)
@@ -365,7 +370,7 @@ class GANDLFData(object):
         final_features = final_features.unsqueeze(0)
 
         # perform inference
-        output_of_cropped = model_inference_function(X=final_features)
+        output_of_cropped = model_inference_function[0](features=final_features, model_inference_function=model_inference_function[1:])
         # some sanity checks using our assumptions of: 
         #     5 total axes: (batches=1, num_classes, spacial_x, spacial_y, spacial_z)
         prelim_shape = output_of_cropped.shape
@@ -388,10 +393,6 @@ class GANDLFData(object):
             output_of_cropped[:,:,:large_idx_corner[0]-small_idx_corner[0],:large_idx_corner[1]-small_idx_corner[1],:large_idx_corner[2]-small_idx_corner[2]]
         
         return output
-
-        
-
-    
 
     def get_train_loader(self):
         return self.train_loader

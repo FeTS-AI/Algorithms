@@ -257,12 +257,12 @@ class BrainMaGeModel(PyTorchFLModel):
 
         return dice_weights_dict, dice_penalty_dict
 
-    def infer_batch_with_no_numpy_conversion(self, X):
+    def infer_batch_with_no_numpy_conversion(self, features, **kwargs):
         """Very similar to base model infer_batch, but does not
            explicitly convert the output to numpy.
            Run inference on a batch
         Args:
-            X: Input for batch
+            features: Input for batch
         Gets the outputs for the inputs provided.
         """
 
@@ -270,8 +270,8 @@ class BrainMaGeModel(PyTorchFLModel):
         self.eval()
 
         with torch.no_grad():
-            X = X.to(device)
-            output = self(X.float())
+            features = features.to(device)
+            output = self(features.float())
             output = output.cpu()
         return output
 
@@ -388,7 +388,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 features = subject['features']
                 mask = subject['gt']
         
-                output = self.infer_batch_with_no_numpy_conversion(X=features)
+                output = self.infer_batch_with_no_numpy_conversion(features=features)
                     
             # using the gandlf loader   
             else:
