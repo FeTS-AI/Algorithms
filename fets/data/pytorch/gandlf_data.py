@@ -7,6 +7,7 @@ import os
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
 import numpy as np
 import torch
+import torchio
 import pandas as pd
 
 from torch.utils.data import DataLoader
@@ -18,6 +19,49 @@ from GANDLF.parseConfig import parseConfig
 from fets.data.gandlf_utils import get_dataframe_and_headers
 from fets.data import get_appropriate_file_paths_from_subject_dir
 
+
+# adapted from https://codereview.stackexchange.com/questions/132914/crop-black-border-of-image-using-numpy/132933#132933
+def crop_image_outside_zeros(array, psize):
+    dimensions = len(array.shape)
+    if dimensions != 4:
+        raise ValueError("Array expected to be 4D but got {} dimensions.".format(dimensions)) 
+    
+    # collapse to single channel and get the mask of non-zero voxels
+    mask = array.sum(axis=0) > 0
+
+    # get the small and large corners
+
+    m0 = mask.any(1).any(1)
+    m1 = mask.any(0)
+    m2 = m1.any(0)
+    m1 = m1.any(1)
+    
+    small = [m0.argmax(), m1.argmax(), m2.argmax()]
+    large = [m0[::-1].argmax(), m1[::-1].argmax(), m2[::-1].argmax()]
+    large = [m - l for m, l in zip(mask.shape, large)]
+    
+    # ensure we have a full patch
+    # for each axis
+    for i in range(3):
+        # if less than patch size, extend the small corner out
+        if large[i] - small[i] < psize[i]:
+            small[i] = large[i] - psize[i]
+
+        # if bottom fell off array, extend the large corner and set small to 0
+        if small[i] < 0:
+            small[i] = 0
+            large[i] = psize[i]
+
+    # calculate pixel location of new bounding box corners
+    small_idx_corner = [small[0], small[1], small[2]]
+    large_idx_corner = [large[0], large[1], large[2]]
+    # Get the contents of the bounding box from the array
+    new_array = array[:,
+                    small[0]:large[0],
+                    small[1]:large[1],
+                    small[2]:large[2]]
+    
+    return small_idx_corner, large_idx_corner, new_array
 
 
     
@@ -246,9 +290,10 @@ class GANDLFData(object):
 
         return loader, companion_loader
 
-    def zero_pad(self, array, axes_to_skip=[0,1]):
+    def zero_pad(self, tensor, axes_to_skip=[0]):
         # zero pads in order to obtain a new array which is properly divisible in all appropriate dimensions
-        current_shape = array.shape
+        # padding is done on top of highest indices across all dimensions
+        current_shape = tensor.shape
         current_shape_list = list(current_shape)
         new_shape = []
         for idx, dim in enumerate(current_shape_list):
@@ -256,11 +301,99 @@ class GANDLFData(object):
                 new_shape.append(dim)
             else:
                 remainder = dim % self.divisibility_factor
-                new_shape.append(dim + self.divisibility_factor - remainder)
-        zero_padded_array = torch.zeros(new_shape)
-        slices = [slice(0,dim) for dim in current_shape]
-        zero_padded_array[tuple(slices)] = array
-        return zero_padded_array 
+                indices_to_add = (self.divisibility_factor - remainder) % self.divisibility_factor
+                new_shape.append(dim + indices_to_add)
+        zero_padded_tensor = torch.zeros(new_shape)
+        slices = [slice(0,dim) for dim in current_shape_list]
+        zero_padded_tensor[tuple(slices)] = tensor
+        return zero_padded_tensor 
+
+    def infer_with_patches(self, model_inference_function, features):
+        # This function infers using multiple patches, fusing corresponding outputs
+
+        # model_inference_function is a list to suport recursive calls to similar function
+
+        subject_dict = {}
+        for i in range(0, features.shape[1]): # 0 is batch
+            subject_dict[str(i)] = torchio.Image(tensor = features[:,i,:,:,:], type=torchio.INTENSITY)
+        
+        grid_sampler = torchio.inference.GridSampler(torchio.Subject(subject_dict), self.psize)
+        patch_loader = torch.utils.data.DataLoader(grid_sampler, batch_size=1)
+        aggregator = torchio.inference.GridAggregator(grid_sampler)
+
+        for patches_batch in patch_loader:
+            # concatenate the different modalities into a tensor
+            image = torch.cat([patches_batch[str(i)][torchio.DATA] for i in range(0, features.shape[1])], dim=1)
+            locations = patches_batch[torchio.LOCATION] # get location of patch
+            pred_mask = model_inference_function[0](model_inference_function=model_inference_function[1:], features=image)
+            aggregator.add_batch(pred_mask, locations)
+        output = aggregator.get_output_tensor() # this is the final mask
+        output = output.unsqueeze(0) # increasing the number of dimension of the mask
+        return output
+
+    def infer_with_crop_and_patches(self, model_inference_function,features):
+        # crops external zero-planes (tracking indices cropped), infers the cropped image with patches, then pads the output 
+        # with zeros to restore the original shape
+
+        return self.infer_with_crop(model_inference_function=[self.infer_with_patches] + model_inference_function, features=features)
+        
+
+    def infer_with_crop(self, model_inference_function, features):
+        # crops external zero-planes (tracking indices cropped), infers the cropped image in one pass, then pads the output 
+        # with zeros to restore the original shape
+
+        # model_inference_function is a list to suport recursive calls to similar function
+
+        # record original feature shape
+        original_shape = list(features.shape)
+        # sanity check on expected shape (assumptions used to detect physical dimensions to construct a properly shaped output)
+        if len(original_shape) != 5:
+            raise ValueError('Expected features shape to be of length 5.')
+        if original_shape[0] != 1:
+            raise ValueError('Expected batch dimension to be 1 in features.')
+        if original_shape[1] != len(self.feature_modes):
+            raise ValueError('Expected scaning modes to be eunumerated along axis 1 of features.')
+
+        # crop function will expect a numpy array, and that the batch dimension is stripped
+        features_np = features.numpy().copy()
+        squeezed_features_np = np.squeeze(features_np, axis=0)
+        small_idx_corner, large_idx_corner, cropped_features_np = crop_image_outside_zeros(array=squeezed_features_np, psize = self.psize)
+        # convert back to torch tensor
+        cropped_features = torch.tensor(cropped_features_np)
+        
+
+        # we will not track how many indices are added during this padding, as the associated output
+        # indices will be ignored (since these are associated with input pixels of zeros, they will
+        # either get replaced by output of zero or dropped when they extend above original image size)
+        final_features = self.zero_pad(tensor=cropped_features)
+
+        # put back in batch dimension (including in cropped idx info)
+        final_features = final_features.unsqueeze(0)
+
+        # perform inference
+        output_of_cropped = model_inference_function[0](features=final_features, model_inference_function=model_inference_function[1:])
+        # some sanity checks using our assumptions of: 
+        #     5 total axes: (batches=1, num_classes, spacial_x, spacial_y, spacial_z)
+        prelim_shape = output_of_cropped.shape
+        if (len(prelim_shape) != 5) or (prelim_shape[0] != 1) or (prelim_shape[1] != len(self.class_list)):
+            raise ValueError('Expected shape [1, num_classes, spacial_x, spacial_y, spacial_z] of cropped-feature output and found ', output_of_cropped.shape)
+        
+        output_shape = [1, len(self.class_list), original_shape[2], original_shape[3], original_shape[4]] 
+
+        # prepare final output by initializing with all background (using appropriate class encoding)
+        # checking against two use-cases (will need to change to accomadate others)
+        output = torch.zeros(size=output_shape)
+        if self.class_list == [0, 1, 2 , 4]:
+            # in this case, background is encoded in the first output channel
+            output[:,0,:,:,:] = 1
+        elif not (set(self.class_list) == set(['4', '1||2||4', '1||4'])):
+            raise ValueError('Supporting class list of {} is not present.'.format(self.class_list))
+  
+        # write in non-background output using the output of cropped features
+        output[:, :, small_idx_corner[0]:large_idx_corner[0],small_idx_corner[1]:large_idx_corner[1], small_idx_corner[2]:large_idx_corner[2]] = \
+            output_of_cropped[:,:,:large_idx_corner[0]-small_idx_corner[0],:large_idx_corner[1]-small_idx_corner[1],:large_idx_corner[2]-small_idx_corner[2]]
+        
+        return output
 
     def get_train_loader(self):
         return self.train_loader
