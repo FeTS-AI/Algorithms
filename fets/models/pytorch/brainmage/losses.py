@@ -15,38 +15,70 @@ import numpy as np
 import torch
 
 
-def clinical_dice(output, target, smooth=1e-7, **kwargs):
-    assert output.shape[1] == 4
-    assert target.shape[1] == 4
+def clinical_dice(output, target, class_list, smooth=1e-7, **kwargs):
+    # some sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output and target going into clinical_dice do not match.')
+    if output.shape[1] != len(class_list):
+        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
 
-    # enhancing_tumor ('4': ie channel 3)
-    output_enhancing = output[:,3,:,:]
-    target_enhancing = target[:,3,:,:]
-    dice_for_enhancing = channel_dice(output_enhancing, target_enhancing)
+    # We detect two use_cases here, and force a change in the code when another is wanted.
+    # In this case we depend on correct ordering of class_list.
+    if list(class_list) == [0, 1, 2, 4]:
+        clinical_labels = False
+    # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
+    elif isinstance(class_list[0], str) and len(class_list)==3:
+        clinical_labels = True
+    else:
+        raise ValueError('clinical dice is not yet designed for this model class_list: ', class_list)
+
+    if clinical_labels:
+        num_output_channels = output.shape[1]
+        total_dice = 0
+        for channel in range(num_output_channels):
+            total_dice += channel_dice(output[:,channel,:,:], target[:,channel,:,:])
+        ave_dice = total_dice / num_output_channels
+        
+    else:
+
+        # enhancing_tumor ('4': ie channel 3)
+        output_enhancing = output[:,3,:,:]
+        target_enhancing = target[:,3,:,:]
+        dice_for_enhancing = channel_dice(output_enhancing, target_enhancing)
     
-    # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3)
-    output_whole = torch.max(output[:,1:,:,:],dim=1).values
-    target_whole = torch.max(target[:,1:,:,:],dim=1).values
-    dice_for_whole = channel_dice(output_whole, target_whole)
+        # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3)
+        output_whole = torch.max(output[:,1:,:,:],dim=1).values
+        target_whole = torch.max(target[:,1:,:,:],dim=1).values
+        dice_for_whole = channel_dice(output_whole, target_whole)
     
-    # tumor core ('1'|'4', ie channels 1 or 3)
-    output_channels_1_3 = torch.cat([output[:,1,:,:], output[:,3,:,:]], dim=1)
-    output_core = torch.max(output_channels_1_3,dim=1).values
-    target_channels_1_3 = torch.cat([target[:,1,:,:], target[:,3,:,:]],dim=1)
-    target_core = torch.max(target_channels_1_3,dim=1).values
-    dice_for_core = channel_dice(output_core, target_core)
+        # tumor core ('1'|'4', ie channels 1 or 3)
+        output_channels_1_3 = torch.cat([output[:,1,:,:], output[:,3,:,:]], dim=1)
+        output_core = torch.max(output_channels_1_3,dim=1).values
+        target_channels_1_3 = torch.cat([target[:,1,:,:], target[:,3,:,:]],dim=1)
+        target_core = torch.max(target_channels_1_3,dim=1).values
+        dice_for_core = channel_dice(output_core, target_core)
 
-    # average the clinical dice scores
-    return (dice_for_enhancing + dice_for_whole + dice_for_core) / 3
+        ave_dice = (dice_for_enhancing + dice_for_whole + dice_for_core) / 3
+
+    return ave_dice
 
 
-def clinical_dice_loss(output, target, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice(output, target, smooth, **kwargs)
+def clinical_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    clin_dice = clinical_dice(output=output, 
+                              target=target, 
+                              class_list=class_list, 
+                              smooth=smooth, 
+                              **kwargs)
     return 1 - clin_dice
 
 
-def clinical_dice_log_loss(output, target, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice(output, target, smooth, **kwargs)
+def clinical_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    clin_dice = clinical_dice(output=output, 
+                              target=target, 
+                              class_list=class_list, 
+                              smooth=smooth, 
+                              **kwargs)
+                              
     if clin_dice <= 0:
         return 0
     else:
@@ -54,11 +86,17 @@ def clinical_dice_log_loss(output, target, smooth=1e-7, **kwargs):
 
 
 def channel_dice_loss(output, target, smooth=1e-7, **kwargs):
-    return 1 - channel_dice(output, target, smooth=1e-7, **kwargs)
+    return 1 - channel_dice(output=output, 
+                            target=target, 
+                            smooth=smooth, 
+                            **kwargs)
 
 
 def channel_log_dice_loss(output, target, smooth=1e-7, **kwargs):
-    return -np.log(channel_dice(output, target, smooth=1e-7, **kwargs))
+    return -np.log(channel_dice(output=output, 
+                                target=target, 
+                                smooth=smooth, 
+                                **kwargs))
 
 def channel_dice(output, target, smooth=1e-7, **kwargs):
     output = output.contiguous().view(-1)
@@ -102,7 +140,7 @@ def dice_loss(output, target, binary_classification, **kwargs):
 
 
 def log_dice_loss(output, target, binary_classification, **kwargs):
-    raise NotImplemented('Find and fix this code')
+    raise NotImplementedError('Find and fix this code')
     # return ave_loss_over_channels(output=output, 
     #                               target=target, 
     #                               binary_classification=binary_classification, 
