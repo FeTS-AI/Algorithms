@@ -290,10 +290,10 @@ class GANDLFData(object):
 
         return loader, companion_loader
 
-    def zero_pad(self, array, axes_to_skip=[0]):
+    def zero_pad(self, tensor, axes_to_skip=[0]):
         # zero pads in order to obtain a new array which is properly divisible in all appropriate dimensions
         # padding is done on top of highest indices across all dimensions
-        current_shape = array.shape
+        current_shape = tensor.shape
         current_shape_list = list(current_shape)
         new_shape = []
         for idx, dim in enumerate(current_shape_list):
@@ -301,12 +301,12 @@ class GANDLFData(object):
                 new_shape.append(dim)
             else:
                 remainder = dim % self.divisibility_factor
-                indices_to_add = self.divisibility_factor - remainder
+                indices_to_add = (self.divisibility_factor - remainder) % self.divisibility_factor
                 new_shape.append(dim + indices_to_add)
-        zero_padded_array = torch.zeros(new_shape)
-        slices = [slice(0,dim) for dim in current_shape]
-        zero_padded_array[tuple(slices)] = array
-        return zero_padded_array 
+        zero_padded_tensor = torch.zeros(new_shape)
+        slices = [slice(0,dim) for dim in current_shape_list]
+        zero_padded_tensor[tuple(slices)] = tensor
+        return zero_padded_tensor 
 
     def infer_with_patches(self, model_inference_function, features):
         # This function infers using multiple patches, fusing corresponding outputs
@@ -365,7 +365,7 @@ class GANDLFData(object):
         # we will not track how many indices are added during this padding, as the associated output
         # indices will be ignored (since these are associated with input pixels of zeros, they will
         # either get replaced by output of zero or dropped when they extend above original image size)
-        final_features = self.zero_pad(array=cropped_features)
+        final_features = self.zero_pad(tensor=cropped_features)
 
         # put back in batch dimension (including in cropped idx info)
         final_features = final_features.unsqueeze(0)

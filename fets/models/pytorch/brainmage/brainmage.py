@@ -406,7 +406,11 @@ class BrainMaGeModel(PyTorchFLModel):
                 
             # one-hot encoding of ground truth
             mask = one_hot(mask, self.data.class_list)
-            # mask = mask.to(device)
+            
+            # sanity check that the output and mask have the same shape
+            if output.shape != mask.shape:
+                raise ValueError('Model output and ground truth mask are not the same shape.')
+
             # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
             curr_dice = clinical_dice(output.float(), mask.float(), class_list=self.data.class_list).cpu().data.item()
             total_dice += curr_dice
