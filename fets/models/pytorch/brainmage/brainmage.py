@@ -350,7 +350,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                     output = self(features.float())
                     # Computing the loss
-                    loss = self.loss_fn(output.float(), mask.float(),num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list)
+                    loss = self.loss_fn(output.float(), mask.float(), num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list, to_scalar=False)
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
                         num_nan_losses += 1
@@ -426,7 +426,8 @@ class BrainMaGeModel(PyTorchFLModel):
             current_dice = clinical_dice(output=output.float(), 
                                          target=mask.float(), 
                                          class_list=self.data.class_list, 
-                                         fine_grained=self.validate_with_fine_grained_dice)
+                                         fine_grained=self.validate_with_fine_grained_dice, 
+                                         to_scaler=True)
             # the dice results here are dictionaries (sum up the totals)
             for key in total_dice:
                 total_dice[key] = total_dice[key] + current_dice[key]

@@ -26,7 +26,6 @@ def clinical_dice(output, target, class_list, fine_grained=True, smooth=1e-7, **
                                                       target=target, 
                                                       class_list=class_list, 
                                                       smooth=smooth,
-                                                      to_scalar=True, 
                                                       **kwargs)
 
     if fine_grained:
