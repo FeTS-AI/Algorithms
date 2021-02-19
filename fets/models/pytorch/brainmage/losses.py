@@ -55,24 +55,24 @@ def clinical_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs
 
     if clinical_labels:
 
-        # we know it is channel 0 only because of know class_list above
+        # channel 0 because of known class_list when clinical_labels is True
         dice_for_enhancing = channel_dice(output=output[:,0,:,:,:], 
                                           target=target[:,0,:,:,:], 
                                           smooth=smooth, 
                                           **kwargs)
-        # we know it is channel 1 only because of know class_list above
+        # channel 1 because of known class_list when clinical_labels is True
         dice_for_whole = channel_dice(output=output[:,1,:,:,:], 
                                       target=target[:,1,:,:,:], 
                                       smooth=smooth, 
                                       **kwargs)
-        # we know it is channel 2 only because of know class_list above
+        # channel 2 because of known class_list when clinical_labels is True
         dice_for_core = channel_dice(output=output[:,2,:,:,:], 
                                      target=target[:,2,:,:,:], 
                                      smooth=smooth, 
                                      **kwargs)
     else:
 
-        # enhancing_tumor ('4': channel 3 based on known class_list above)
+        # enhancing_tumor ('4': channel 3 based on known class_list)
         output_enhancing = output[:,3,:,:,:]
         target_enhancing = target[:,3,:,:,:]
         dice_for_enhancing = channel_dice(output=output_enhancing, 
@@ -80,7 +80,7 @@ def clinical_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs
                                           smooth=smooth, 
                                           **kwargs)
     
-        # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3 based on known class_list above)
+        # whole tumor ('1'|'2'|'4', ie channels 1, 2, or 3 based on known class_list)
         output_whole = torch.max(output[:,1:,:,:,:],dim=1).values
         target_whole = torch.max(target[:,1:,:,:,:],dim=1).values
         dice_for_whole = channel_dice(output=output_whole, 
@@ -88,7 +88,7 @@ def clinical_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs
                                       smooth=smooth, 
                                       **kwargs)
     
-        # tumor core ('1'|'4', ie channels 1 or 3 based on known class_list above)
+        # tumor core ('1'|'4', ie channels 1 or 3 based on known class_list)
         output_channels_1_3 = torch.cat([output[:,1,:,:,:], output[:,3,:,:,:]], dim=1)
         output_core = torch.max(output_channels_1_3,dim=1).values
         target_channels_1_3 = torch.cat([target[:,1,:,:,:], target[:,3,:,:,:]],dim=1)
