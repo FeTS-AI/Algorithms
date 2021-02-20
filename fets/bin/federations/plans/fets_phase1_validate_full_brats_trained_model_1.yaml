@@ -34,7 +34,7 @@ collaborator_object_init:
     polling_interval  : 4
     opt_treatment     : 'CONTINUE_LOCAL'
     send_model_deltas : False
-    epochs_per_round  : 1.0
+    num_batches_per_round  : 1
 
 network_object_init:
   defaults_file: defaults/network.yaml
