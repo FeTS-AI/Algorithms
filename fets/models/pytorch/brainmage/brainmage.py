@@ -93,10 +93,17 @@ class BrainMaGeModel(PyTorchFLModel):
                  smooth=1e-7,
                  use_penalties=False, 
                  validate_on_patches = False,
-                 validate_with_fine_grained_dice = True,
+                 validate_with_fine_grained_dice = True, 
+                 torch_threads=None, 
+                 kmp_affinity=False,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
-        
+
+        if torch_threads is not None:
+            torch.set_num_threads(torch_threads)
+        if kmp_affinity:
+            os.environ["KMP_AFFINITY"] = "granularity=fine,verbose,compact,1,0"
+                 
         self.device = device
 
         # FIXME: this puts priority for these values on data object over flplan. Is this correct?
