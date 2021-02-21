@@ -92,7 +92,7 @@ class BrainMaGeModel(PyTorchFLModel):
                  psize=[128,128,128],
                  smooth=1e-7,
                  use_penalties=False, 
-                 validate_on_patches = False,
+                 validate_on_patches = True,
                  validate_with_fine_grained_dice = True, 
                  torch_threads=None, 
                  kmp_affinity=False,
