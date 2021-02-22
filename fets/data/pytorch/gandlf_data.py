@@ -153,8 +153,6 @@ class GANDLFData(object):
 
         if data_usage == 'train-val':
 
-            np.random
-
             self.shuffle_before_train_val_split = shuffle_before_train_val_split
             # in the event that the split instance directory is absent, do we generate a split or raise and exception?
             self.allow_auto_split = allow_auto_split
@@ -194,24 +192,20 @@ class GANDLFData(object):
                 raise ValueError('No split under the name of {} is present, and allow_auto_split is not set to True.'.format(split_instance_dirname))
             
             # get the loaders
+            print("data frames hears, train, val", self.headers, train_dataframe, val_dataframe)
             self.train_loader, self.penalty_loader = self.get_loaders(data_frame=train_dataframe, train=True, augmentations=self.train_augmentations)
             self.val_loader, _ = self.get_loaders(data_frame=val_dataframe, train=False, augmentations=None)
             self.inference_loader = []
 
         elif data_usage == 'inference':
-            # get the dataframe and headers
-            if isinstance(data_path, dict):
-                if ('inference' not in data_path):
-                    raise ValueError('data_path dictionary is missing the inference key, either privide this entry or change to a string data_path')
-                inference_dataframe, self.headers = get_dataframe_and_headers(file_data_full=data_path['inference'])
-            else:
-                self.set_headers_and_headers_list(self.default_inference_headers, list_needed=True)
-                inference_dataframe = self.create_inference_dataframe(pardir=data_path)
+            self.set_headers_and_headers_list(self.default_inference_headers, list_needed=True)
+            inference_dataframe = self.create_inference_dataframe(pardir=data_path)
             # get the loaders
             self.train_loader = []
             self.penalty_loader = []
             self.val_loader = []
             self.inference_loader, _ = self.get_loaders(data_frame=inference_dataframe, train=False, augmentations=None)
+        
         else:
             raise ValueError('data_usage needs to be either train-val or inference')
         
@@ -254,8 +248,10 @@ class GANDLFData(object):
         total_subjects = len(subdir_paths_list)
         if self.shuffle_before_train_val_split:
             random_generator_instance = np.random.default_rng(np_split_seed)
-            random_generator_instance.random.shuffle(subdir_paths_list)
-        
+            random_generator_instance.shuffle(subdir_paths_list)
+            # cast back to a list if needed
+            subdir_paths_list = subdir_paths_list.tolist()
+            
         # compute the split
 
         # sanity checks
