@@ -79,12 +79,15 @@ class GANDLFData(object):
                  class_list, 
                  data_augmentation, 
                  data_preprocessing,
+                 split_instance_dirname,
+                 np_split_seed,
                  q_max_length=1,
                  q_num_workers=0,
-                 excluded_subdirs = ['log', 'logs'],
+                 excluded_subdirs = ['log', 'logs', 'split_info'],
                  percent_train = 0.8,
                  in_memory=False,
-                 data_usage='train-val', 
+                 data_usage='train-val',
+                 allow_auto_split = True, 
                  shuffle_before_train_val_split=True,
                  **kwargs):
 
@@ -146,24 +149,50 @@ class GANDLFData(object):
 
         # sudirectories to skip when listing patient subdirectories inside data directory
         self.excluded_subdirs = excluded_subdirs
-        self.shuffle_before_train_val_split = shuffle_before_train_val_split
+        
 
         if data_usage == 'train-val':
+
+            np.random
+
+            self.shuffle_before_train_val_split = shuffle_before_train_val_split
+            # in the event that the split instance directory is absent, do we generate a split or raise and exception?
+            self.allow_auto_split = allow_auto_split
+
+            split_info_dirpath = os.path.join(data_path, 'split_info')
+            if not os.path.exists(split_info_dirpath):
+                os.mkdir(split_info_dirpath)
+            #  path to directory meant to hold train.csv and val.csv for a specific split
+            split_instance_dirpath = os.path.join(split_info_dirpath, split_instance_dirname)
+            train_csv_path = os.path.join(split_instance_dirpath, 'train.csv')
+            val_csv_path = os.path.join(split_instance_dirpath, 'val.csv')
+
+            split_path_existence = [os.path.exists(path) for path in [split_instance_dirpath, train_csv_path, val_csv_path]]
+            some_split_info_present = np.any(split_path_existence)
+            all_split_info_present = np.all(split_path_existence)
+
+            if some_split_info_present and not all_split_info_present:
+                raise ValueError("A train/val split {} of parent directory {} still exists, but is missing either train or val csvs. Either recover the csvs or remove {}.".format(data_path, split_instance_dirname, split_instance_dirname))
+            
             # get the dataframe and headers
-            if isinstance(data_path, dict):
-                if ('train' not in data_path) or ('val' not in data_path):
-                    raise ValueError('data_path dictionary is missing either train or val key, either privide these, or change to a string data_path (train/val split will then be automatically determined.')
-                train_dataframe, train_headers = get_dataframe_and_headers(file_data_full=data_path['train'])
-                val_dataframe,  val_headers = get_dataframe_and_headers(file_data_full=data_path['val'])
+            if all_split_info_present:
+                train_dataframe, train_headers = get_dataframe_and_headers(file_data_full=train_csv_path)
+                val_dataframe,  val_headers = get_dataframe_and_headers(file_data_full=val_csv_path)
                 
                 # validate headers are the same
                 for header_type in ['subjectIDHeader', 'channelHeaders', 'labelHeader', 'predictionHeaders']:
                     if train_headers[header_type] != val_headers[header_type]:
                         raise ValueError('Train/Val headers must agree, but found different {} ({} != {})'.format(header_type, train_headers[header_type], val_headers[header_type]))
                 self.set_headers_and_headers_list(train_headers)
-            else:
+            elif allow_auto_split:
+                os.mkdir(split_instance_dirpath)
                 self.set_headers_and_headers_list(self.default_train_val_headers, list_needed=True)
-                train_dataframe, val_dataframe = self.create_train_val_dataframes(pardir=data_path, percent_train=percent_train)
+                train_dataframe, val_dataframe = self.create_train_val_dataframes(pardir=data_path, percent_train=percent_train, np_split_seed=np_split_seed)
+                train_dataframe.to_csv(train_csv_path)
+                val_dataframe.to_csv(val_csv_path)
+            else:
+                raise ValueError('No split under the name of {} is present, and allow_auto_split is not set to True.'.format(split_instance_dirname))
+            
             # get the loaders
             self.train_loader, self.penalty_loader = self.get_loaders(data_frame=train_dataframe, train=True, augmentations=self.train_augmentations)
             self.val_loader, _ = self.get_loaders(data_frame=val_dataframe, train=False, augmentations=None)
@@ -209,21 +238,23 @@ class GANDLFData(object):
                 columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
         return pd.DataFrame(columns)
 
-    def get_subdir_paths(self, pardir):
+    def get_sorted_subdir_paths(self, pardir):
         subdirs_list = os.listdir(pardir)
         # filter subdirectories not meant for grabbing subject data
         subdirs_list = [subdir for subdir in subdirs_list if subdir not in self.excluded_subdirs]
         
         # create full paths to subdirs
         subdir_paths_list = [os.path.join(pardir, subdir) for subdir in subdirs_list]
-        return subdir_paths_list
+        # sort and return
+        return np.sort(subdir_paths_list)
 
-    def create_train_val_dataframes(self, pardir, percent_train):
-        
-        subdir_paths_list = self.get_subdir_paths(pardir)
+    def create_train_val_dataframes(self, pardir, percent_train, np_split_seed):
+        # sorting to make process deterministic for a fixed seed
+        subdir_paths_list = self.get_sorted_subdir_paths(pardir)
         total_subjects = len(subdir_paths_list)
         if self.shuffle_before_train_val_split:
-            np.random.shuffle(subdir_paths_list)
+            random_generator_instance = np.random.default_rng(np_split_seed)
+            random_generator_instance.random.shuffle(subdir_paths_list)
         
         # compute the split
 
