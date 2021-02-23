@@ -92,11 +92,18 @@ class BrainMaGeModel(PyTorchFLModel):
                  psize=[128,128,128],
                  smooth=1e-7,
                  use_penalties=False, 
-                 validate_on_patches = False,
-                 validate_with_fine_grained_dice = True,
+                 validate_without_patches = False,
+                 validate_with_fine_grained_dice = True, 
+                 torch_threads=None, 
+                 kmp_affinity=False,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
-        
+
+        if torch_threads is not None:
+            torch.set_num_threads(torch_threads)
+        if kmp_affinity:
+            os.environ["KMP_AFFINITY"] = "granularity=fine,verbose,compact,1,0"
+                 
         self.device = device
 
         # FIXME: this puts priority for these values on data object over flplan. Is this correct?
@@ -136,7 +143,7 @@ class BrainMaGeModel(PyTorchFLModel):
         # used only when using the gandlf_data object
         # (will we crop external zero-planes, infer, then pad output with zeros OR
         #  get outputs for multiple patches - fusing the outputs)
-        self.validate_on_patches = validate_on_patches
+        self.validate_without_patches = validate_without_patches
 
         # Determines if we want our validation results to include separate values for whole-tumor, tumor-core, and
         # enhancing tumor, or to simply report the average of those
@@ -406,12 +413,12 @@ class BrainMaGeModel(PyTorchFLModel):
                 features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                 mask = subject['label'][torchio.DATA]
 
-                if self.validate_on_patches:
-                    output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
-                                                                   features=features)
-                else:
+                if self.validate_without_patches:
                     output = self.data.infer_with_crop(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                        features=features)
+                else:
+                    output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
+                                                                   features=features)
 
                     
                 
