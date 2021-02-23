@@ -340,8 +340,6 @@ class BrainMaGeModel(PyTorchFLModel):
                         features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                         mask = subject['label'][torchio.DATA]
 
-                    print("\n\nTrain features with shape: {}\n".format(features.shape))
-
                     mask = one_hot(mask, self.data.class_list)
                         
                     # Loading features into device

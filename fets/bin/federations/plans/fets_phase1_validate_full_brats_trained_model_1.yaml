@@ -49,6 +49,9 @@ data_object_init:
     psize: [128, 128, 128]
     q_samples_per_volume: 1
     q_verbose: False
+    split_instance_dirname: 'fets_phase1_split_1'
+    np_split_seed: 8950
+    allow_auto_split: True
     class_list: [0, 1, 2, 4]
     data_augmentation:
       'noise':
