@@ -88,7 +88,7 @@ class GANDLFData(object):
                  percent_train = 0.8,
                  in_memory=False,
                  data_usage='train-val',
-                 allow_auto_split = True, 
+                 allow_auto_split = False, 
                  shuffle_before_train_val_split=True,
                  **kwargs):
 
