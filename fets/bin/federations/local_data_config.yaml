@@ -1,0 +1,11 @@
+# Top key is determined by OpenFederatedLearning code
+# Second level key is the name of your institution (you decide in coordination with fets organizers) (will be provided 
+#     as collaborator common name when launching run_collaborator_from_flplan)
+# Third level key needs to match the data_name_in_local_config entry of the flplan being run
+# Fill in the appropriate absolute path to the parent data directory containing the subject subdirectories
+# to be used to create the train/val split.
+
+collaborators:
+  <fill in institution name here>:
+    fets_phase1: '<fill in absolute path to parent data directory here>'
+  

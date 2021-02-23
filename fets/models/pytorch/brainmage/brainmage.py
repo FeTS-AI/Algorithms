@@ -92,10 +92,18 @@ class BrainMaGeModel(PyTorchFLModel):
                  psize=[128,128,128],
                  smooth=1e-7,
                  use_penalties=False, 
-                 infer_gandlf_images_with_cropping = False,
+                 validate_without_patches = False,
+                 validate_with_fine_grained_dice = True, 
+                 torch_threads=None, 
+                 kmp_affinity=False,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
-        
+
+        if torch_threads is not None:
+            torch.set_num_threads(torch_threads)
+        if kmp_affinity:
+            os.environ["KMP_AFFINITY"] = "granularity=fine,verbose,compact,1,0"
+                 
         self.device = device
 
         # FIXME: this puts priority for these values on data object over flplan. Is this correct?
@@ -135,7 +143,11 @@ class BrainMaGeModel(PyTorchFLModel):
         # used only when using the gandlf_data object
         # (will we crop external zero-planes, infer, then pad output with zeros OR
         #  get outputs for multiple patches - fusing the outputs)
-        self.infer_gandlf_images_with_cropping = infer_gandlf_images_with_cropping
+        self.validate_without_patches = validate_without_patches
+
+        # Determines if we want our validation results to include separate values for whole-tumor, tumor-core, and
+        # enhancing tumor, or to simply report the average of those
+        self.validate_with_fine_grained_dice = validate_with_fine_grained_dice
         
         ############### CHOOSING THE LOSS FUNCTION ###################
         if self.which_loss == 'dc':
@@ -328,8 +340,6 @@ class BrainMaGeModel(PyTorchFLModel):
                         features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                         mask = subject['label'][torchio.DATA]
 
-                    print("\n\nTrain features with shape: {}\n".format(features.shape))
-
                     mask = one_hot(mask, self.data.class_list)
                         
                     # Loading features into device
@@ -345,7 +355,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                     output = self(features.float())
                     # Computing the loss
-                    loss = self.loss_fn(output.float(), mask.float(),num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list)
+                    loss = self.loss_fn(output.float(), mask.float(), num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list, to_scalar=False)
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
                         num_nan_losses += 1
@@ -372,7 +382,13 @@ class BrainMaGeModel(PyTorchFLModel):
 
     def validate(self, use_tqdm=False):
         
-        total_dice = 0
+        # dice results are dictionaries
+        if self.validate_with_fine_grained_dice:
+            # here keys will be: 'ET', 'WT', and 'TC'
+            total_dice = {'ET': 0, 'WT': 0, 'TC': 0}
+        else:
+            # here we only have one key: 'AVG(ET,WT,TC)'
+            total_dice = {'AVG(ET,WT,TC)': 0}
         
         val_loader = self.data.get_val_loader()
 
@@ -395,12 +411,12 @@ class BrainMaGeModel(PyTorchFLModel):
                 features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
                 mask = subject['label'][torchio.DATA]
 
-                if self.infer_gandlf_images_with_cropping:
+                if self.validate_without_patches:
                     output = self.data.infer_with_crop(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
-                                                        features=features)
+                                                       features=features)
                 else:
                     output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
-                                                                    features=features)
+                                                                   features=features)
 
                     
                 
@@ -412,11 +428,17 @@ class BrainMaGeModel(PyTorchFLModel):
                 raise ValueError('Model output and ground truth mask are not the same shape.')
 
             # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
-            curr_dice = clinical_dice(output.float(), mask.float(), class_list=self.data.class_list).cpu().data.item()
-            total_dice += curr_dice
+            current_dice = clinical_dice(output=output.float(), 
+                                         target=mask.float(), 
+                                         class_list=self.data.class_list, 
+                                         fine_grained=self.validate_with_fine_grained_dice, 
+                                         to_scaler=True)
+            # the dice results here are dictionaries (sum up the totals)
+            for key in total_dice:
+                total_dice[key] = total_dice[key] + current_dice[key]
                 
-        #Computing the average dice
-        average_dice = total_dice/len(val_loader)
+        #Computing the average dice for all values of total_dice dict
+        average_dice = {key: value/len(val_loader) for key, value in total_dice.items()}
 
         return average_dice
 
