@@ -217,8 +217,8 @@ class GANDLFData(object):
                     self.train_dataframe = pd.read_csv(train_csv_path)
                     self.val_dataframe = pd.read_csv(val_csv_path)
             elif allow_auto_split:
-                os.mkdir(split_instance_dirpath)
                 self.train_dataframe, self.val_dataframe = self.create_train_val_dataframes(pardir=data_path, percent_train=percent_train, np_split_seed=np_split_seed, pickled_split_path=pickled_split_path)
+                os.mkdir(split_instance_dirpath)
                 self.train_dataframe.to_csv(train_csv_path, index=False)
                 self.val_dataframe.to_csv(val_csv_path, index=False)
             else:
