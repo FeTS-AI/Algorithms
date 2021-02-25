@@ -11,6 +11,8 @@ aggregator_object_init:
     init_model_fname: pt_3dresunet_fets_phase1_init_1.pbuf 
     latest_model_fname: pt_3dresunet_fets_phase1_latest_1.pbuf
     best_model_fname: pt_3dresunet_fets_phase1_best_1.pbuf
+    minimum_reporting: 15
+    straggler_cutoff_time: 8100
     runtime_aggregator_config_dir: runtime_agg_config
     runtime_configurable_params: 
       - collaborator_common_names
