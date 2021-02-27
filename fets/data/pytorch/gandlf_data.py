@@ -154,8 +154,14 @@ class GANDLFData(object):
 
         if data_usage == 'train-val':
 
+            self.inference_loader = []
+            
+            # initializationns
             self.train_dataframe = None
             self.val_dataframe = None
+            all_split_info_present = False
+            self.train_subdirs = None
+            self.val_subdirs = None
 
             self.set_headers_and_headers_list(self.train_val_headers, list_needed=True)
 
@@ -175,7 +181,7 @@ class GANDLFData(object):
             # determine the completeness of our split info
             some_split_info_present = os.path.exists(split_instance_dirpath)
 
-            all_split_info_present = False
+            
 
             if some_split_info_present:
                 csvs_exist = np.all([os.path.exists(path) for path in [train_csv_path, val_csv_path]])
@@ -187,24 +193,20 @@ class GANDLFData(object):
                     if not csvs_exist:
                         print("\nWARNING: The gandlf_data object is recovering missing train and val csvs from pickled split info.\n")
                         with open(pickled_split_path, 'rb') as _file:
-                            train_subdirs, val_subdirs = pkl.load(_file)
-                        train_paths = [os.path.join(data_path, subdir) for subdir in train_subdirs]
-                        val_paths = [os.path.join(data_path, subdir) for subdir in val_subdirs]
+                            self.train_subdirs, self.val_subdirs = pkl.load(_file)
                         self.train_dataframe, self.val_dataframe = self.create_train_val_dataframes(pardir=data_path, 
-                                                                                        percent_train=None, 
-                                                                                        np_split_seed=None, 
-                                                                                        train_paths=train_paths, 
-                                                                                        val_paths=val_paths)
+                                                                                                    percent_train=None, 
+                                                                                                    np_split_seed=None)
                         self.train_dataframe.to_csv(train_csv_path, index=False)
                         self.val_dataframe.to_csv(val_csv_path, index=False)
                     if not pickled_split_exists:
                         print("\nWARNING: The gandlf_data object is recovering missing pickled split info from train and val csvs.\n")
                         self.train_dataframe = pd.read_csv(train_csv_path)
                         self.val_dataframe = pd.read_csv(val_csv_path)
-                        train_subdirs = list(self.train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-                        val_subdirs = list(self.val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+                        self.train_subdirs = list(self.train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+                        self.val_subdirs = list(self.val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
                         with open(pickled_split_path, 'wb') as _file:
-                            pkl.dump((train_subdirs, val_subdirs), _file)
+                            pkl.dump((self.train_subdirs, self.val_subdirs), _file)
                 else:
                    raise ValueError("A train/val split {} of parent directory {} still exists, but is missing enough info to not be recoverable. Either recover the csvs, or pickled split, or remove {} and allow auto split.".format(data_path, split_instance_dirname, split_instance_dirname)) 
 
@@ -216,18 +218,22 @@ class GANDLFData(object):
                 else:
                     self.train_dataframe = pd.read_csv(train_csv_path)
                     self.val_dataframe = pd.read_csv(val_csv_path)
+                self.set_train_and_val_loaders()
             elif allow_auto_split:
-                self.train_dataframe, self.val_dataframe = self.create_train_val_dataframes(pardir=data_path, percent_train=percent_train, np_split_seed=np_split_seed, pickled_split_path=pickled_split_path)
+                self.train_dataframe, self.val_dataframe = self.create_train_val_dataframes(pardir=data_path, 
+                                                                                            percent_train=percent_train, 
+                                                                                            np_split_seed=np_split_seed)
+                self.set_train_and_val_loaders()
+
                 os.mkdir(split_instance_dirpath)
                 self.train_dataframe.to_csv(train_csv_path, index=False)
                 self.val_dataframe.to_csv(val_csv_path, index=False)
+                with open(pickled_split_path, 'wb') as _file:
+                            pkl.dump((self.train_subdirs, self.val_subdirs), _file)
             else:
                 raise ValueError('No split under the name of {} is present, and allow_auto_split is not set to True.'.format(split_instance_dirname))
             
-            # get the loaders
-            self.train_loader, self.penalty_loader = self.get_loaders(data_frame=self.train_dataframe, train=True, augmentations=self.train_augmentations)
-            self.val_loader, _ = self.get_loaders(data_frame=self.val_dataframe, train=False, augmentations=None)
-            self.inference_loader = []
+            
 
         elif data_usage == 'inference':
             self.set_headers_and_headers_list(self.inference_headers, list_needed=True)
@@ -243,6 +249,10 @@ class GANDLFData(object):
         
         self.training_data_size = len(self.train_loader)
         self.validation_data_size = len(self.val_loader)
+
+    def set_train_and_val_loaders(self):
+        self.train_loader, self.penalty_loader = self.get_loaders(data_frame=self.train_dataframe, train=True, augmentations=self.train_augmentations)
+        self.val_loader, _ = self.get_loaders(data_frame=self.val_dataframe, train=False, augmentations=None)
 
         
     def set_headers_and_headers_list(self, headers, list_needed=False):
@@ -274,10 +284,10 @@ class GANDLFData(object):
         # sort and return
         return np.sort(subdir_paths_list)
 
-    def create_train_val_dataframes(self, pardir, percent_train, np_split_seed, train_paths=None, val_paths=None, pickled_split_path=None):
+    def create_train_val_dataframes(self, pardir, percent_train, np_split_seed):
 
-        if (train_paths is None) or (val_paths is None):
-            if train_paths or val_paths:
+        if (self.train_subdirs is None) or (self.val_subdirs is None):
+            if self.train_subdirs or self.val_subdirs:
                 raise ValueError('Unexpected behavior: Either both or none of train and val paths should exist.')
             else:
                 # sorting to make process deterministic for a fixed seed
@@ -300,14 +310,14 @@ class GANDLFData(object):
                 
                 train_paths = subdir_paths_list[:split_idx]
                 val_paths = subdir_paths_list[split_idx:]
-                train_subdirs = [os.path.split(path)[1] for path in train_paths]
-                val_subdirs = [os.path.split(path)[1] for path in val_paths]
-                with open(pickled_split_path, 'wb') as _file:
-                            pkl.dump((train_subdirs, val_subdirs), _file)
+                self.train_subdirs = [os.path.split(path)[1] for path in train_paths]
+                self.val_subdirs = [os.path.split(path)[1] for path in val_paths]
                 print('Splitting the {} subjects in {} using percent_train of {}'.format(total_subjects, pardir, percent_train))
                 print('Resulting train and val sets have counts {} and {} respectively.'.format(len(train_paths), len(val_paths)))
                 
-        
+        train_paths = [os.path.join(pardir, subdir) for subdir in self.train_subdirs]
+        val_paths = [os.path.join(pardir, subdir) for subdir in self.val_subdirs]
+                        
         # create the dataframes
         train_dataframe = self.create_dataframe_from_subdir_paths(train_paths, include_labels=True)
         val_dataframe = self.create_dataframe_from_subdir_paths(val_paths, include_labels=True)
