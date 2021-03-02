@@ -432,7 +432,7 @@ class BrainMaGeModel(PyTorchFLModel):
                                          target=mask.float(), 
                                          class_list=self.data.class_list, 
                                          fine_grained=self.validate_with_fine_grained_dice, 
-                                         to_scaler=True)
+                                         to_scalar=True)
             # the dice results here are dictionaries (sum up the totals)
             for key in total_dice:
                 total_dice[key] = total_dice[key] + current_dice[key]
