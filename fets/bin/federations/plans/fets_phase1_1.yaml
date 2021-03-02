@@ -8,7 +8,7 @@
 aggregator_object_init:
   init_kwargs:
     rounds_to_train: 200
-    model_directory: pt_3dresunet_fets_phase1
+    model_directory: fets_phase1_1
     init_model_fname: pt_3dresunet_fets_phase1_init_1.pbuf 
     latest_model_fname: pt_3dresunet_fets_phase1_latest_1.pbuf
     best_model_fname: pt_3dresunet_fets_phase1_best_1.pbuf
