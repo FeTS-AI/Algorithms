@@ -8,7 +8,6 @@
 aggregator_object_init:
   init_kwargs:
     rounds_to_train: 1
-    model_directory: fets_phase1_brats20pretrained
     init_model_fname: pt_3dresunet_fets_phase1_brats20pretrained_init_1.pbuf 
     latest_model_fname: pt_3dresunet_fets_phase1_brats20pretrained_latest_1.pbuf
     best_model_fname: pt_3dresunet_fets_phase1_brats20pretrained_best_1.pbuf
@@ -38,10 +37,17 @@ collaborator_object_init:
     polling_interval  : 4
     opt_treatment     : 'CONTINUE_LOCAL'
     send_model_deltas : False
-    num_batches_per_round  : 1
+    epochs_per_round  : 1.0
+    # num_batches_per_round  : 1
 
 network_object_init:
-  defaults_file: defaults/network.yaml
+  auto_port   : True
+  cert_folder : fetsfun
+  hash_salt   : fetsfun
+  init_kwargs :
+    agg_addr            : fetsfun
+    disable_tls         : True
+    disable_client_auth : True
  
 data_object_init:
   class_to_init: fets.data.pytorch.gandlf_data.GANDLFData
