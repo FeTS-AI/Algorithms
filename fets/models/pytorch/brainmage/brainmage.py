@@ -364,7 +364,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         #Updating the weight values
                         self.optimizer.step()
                         #Pushing the dice to the cpu and only taking its value
-                        loss.cpu().data.item()
+                        loss = loss.cpu().data.item()
                         total_loss += loss
                     self.lr_scheduler.step()
 
