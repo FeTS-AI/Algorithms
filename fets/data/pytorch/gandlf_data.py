@@ -181,7 +181,8 @@ class GANDLFData(object):
             # determine the completeness of our split info
             some_split_info_present = os.path.exists(split_instance_dirpath)
 
-            
+            # TODO: below, compare existing data with split to be sure it matches, if allowed
+            # supplement the train and val csvs and split into pickle
 
             if some_split_info_present:
                 csvs_exist = np.all([os.path.exists(path) for path in [train_csv_path, val_csv_path]])
