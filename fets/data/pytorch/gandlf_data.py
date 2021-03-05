@@ -463,7 +463,7 @@ class GANDLFData(object):
             # grab second to last part of path (subdir name)
             subdir = os.path.split(subdir_path)[1]
             fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, 
-                                                                 include_labels=include_labels, 
+                                                                 include_labels=include_labels,         
                                                                  handle_missing_datafiles=self.handle_missing_datafiles)
             if fpaths is None:
                 if self.handle_missing_datafiles:
