@@ -227,14 +227,26 @@ class GANDLFData(object):
 
         if all_split_info_present:
 
-            train_subdirs, val_subdirs = self.utilize_existing_split()
+            train_subdirs, val_subdirs, add_train_subdirs, add_val_subdirs = self.utilize_existing_split()
             train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)     
             self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
 
             # now that we know none of the subdirs led to missing file exceptions (from ImagesFromDataFrame) we write out the split info
+            
             dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
             dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
             dump_pickle((train_subdirs, val_subdirs), self.pickled_split_path)
+
+            # update the lost data files with added samples
+            if (add_train_subdirs is not None) and (add_train_subdirs != []):
+                old_missing_train = set(load_pickle(self.pickled_lost_training_data_path))
+                new_missing_train = list(old_missing_train - set(add_train_subdirs))
+                dump_pickle(new_missing_train, self.pickled_lost_training_data_path)
+            if (add_val_subdirs is not None) and (add_val_subdirs != []):
+                old_missing_val = set(load_pickle(self.pickled_lost_val_data_path))
+                new_missing_val = list(old_missing_val - set(add_val_subdirs))
+                dump_pickle(new_missing_val, self.pickled_lost_val_data_path)
+
 
         elif self.allow_auto_split:
 
@@ -273,6 +285,9 @@ class GANDLFData(object):
         train_subdirs = split_train_subdirs - these_missing_train
         val_subdirs = split_val_subdirs - these_missing_val
 
+        add_train_subdirs = None
+        add_val_subdirs = None
+
         if (these_missing_train != set([])) or (these_missing_val != set([])):
             
             if these_missing_train != set([]):
@@ -295,33 +310,49 @@ class GANDLFData(object):
         if self.allow_new_data_into_preexisting_split:
        
             # recovering information about all missing subdirs (to ensure old val does not become new train and vice versa)
-            missing_train = set(load_pickle(self.pickled_lost_training_data_path))
-            missing_val = set(load_pickle(self.pickled_lost_val_data_path))
+            if os.path.exists(self.pickled_lost_training_data_path):
+                missing_train = set(load_pickle(self.pickled_lost_training_data_path))
+            else:
+                missing_train = set([])
+            if os.path.exists(self.pickled_lost_val_data_path):
+                missing_val = set(load_pickle(self.pickled_lost_val_data_path))
+            else:
+                missing_val = set([])
 
             # we know how to place these subdirs (may be empty)
-            add_train_subdirs = list(disk_subdirs.intersection(missing_train)) 
-            add_val_subdirs = list(disk_subdirs.intersection(missing_val)) 
+            add_train_subdirs = disk_subdirs.intersection(missing_train) 
+            add_val_subdirs = disk_subdirs.intersection(missing_val) 
              
             # these we will split (trying to maintain self.percent_train best we can) 
-            new_subdirs_to_split = list(disk_subdirs - split_train_subdirs - split_val_subdirs - add_train_subdirs - add_val_subdirs)
+            new_subdirs_to_split = disk_subdirs - split_train_subdirs - split_val_subdirs - add_train_subdirs - add_val_subdirs
+            
+            # casting to lists now
+            train_subdirs = list(train_subdirs)
+            val_subdirs = list(val_subdirs)
+            add_train_subdirs = list(add_train_subdirs)
+            add_val_subdirs = list(add_val_subdirs)
+            new_subdirs_to_split = list(new_subdirs_to_split)
+
             # sorting then shuffling for reproducibility with fixed np_split_seed and fixed old split info and new samples
             new_subdirs_to_split = np.sort(new_subdirs_to_split)
             self.random_generator_instance.shuffle(new_subdirs_to_split)
 
             # one by one, append to train or val according to  
             num_train = len(train_subdirs) + len(add_train_subdirs)
-            num_val =  len(val_subdirs) + len(add_val_subdirs)
-            total_samples = num_train + num_val
+            total_samples = num_train + len(val_subdirs) + len(add_val_subdirs)
             for subdir in new_subdirs_to_split:
                 if float(num_train)/float(total_samples) < self.percent_train:
-                    add_train_subdirs.append(subdir)
+                    train_subdirs.append(subdir)
+                    num_train += 1
                 else:
-                    add_val_subdirs.append(subdir)
+                    val_subdirs.append(subdir)
+                total_samples += 1
+                
 
             train_subdirs = train_subdirs + add_train_subdirs
             val_subdirs = val_subdirs + add_val_subdirs
-
-        return train_subdirs, val_subdirs
+        # this cast to list is due to the case that the previous conditional block is skipped
+        return list(train_subdirs), list(val_subdirs), add_train_subdirs, add_val_subdirs
                 
     def subdirs_to_subdirpaths(self, subdirs):
         return [os.path.join(self.data_path, subdir) for subdir in subdirs]
