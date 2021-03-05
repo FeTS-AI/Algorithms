@@ -6,7 +6,8 @@ import numpy as np
 def get_appropriate_file_paths_from_subject_dir(dir_path, 
                                                 include_labels=False, 
                                                 allowed_labelfile_endings=["_seg_binary.nii.gz", "_seg_binarized.nii.gz", "_SegBinarized.nii.gz", "_seg.nii.gz"], 
-                                                excluded_labelfile_endings=[]):
+                                                excluded_labelfile_endings=[], 
+                                                handle_missing_modalities=False):
     '''
     This function takes a subject directory as input and return a dictionary of the full paths to the modalities (BraTS-specific)
     '''
@@ -46,6 +47,10 @@ def get_appropriate_file_paths_from_subject_dir(dir_path,
 
     for key, value in return_dict.items():
         if value is None:
-            raise ValueError('No {} file found in {}.'.format(key, dir_path))
+            if handle_missing_modalities:
+                print('\nNo {} file found in {}.\n'.format(key, dir_path))
+                return None
+            else:
+                raise ValueError('No {} file found in {}.'.format(key, dir_path))
                  
     return return_dict
