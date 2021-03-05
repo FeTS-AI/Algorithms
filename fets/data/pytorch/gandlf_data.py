@@ -190,8 +190,12 @@ class GANDLFData(object):
     def setup_for_train_val(self):
         self.inference_loader = []
             
-        # initializations
+        # initialization
         all_split_info_present = False
+
+        # sanity check
+        if (self.percent_train <= 0.0) or (self.percent_train >= 1.0):
+            raise ValueError('Value of percent_train must be stricly between 0 and 1.') 
 
         self.set_headers_and_headers_list(self.train_val_headers, list_needed=True)
 
@@ -228,6 +232,10 @@ class GANDLFData(object):
         if all_split_info_present:
 
             train_subdirs, val_subdirs, add_train_subdirs, add_val_subdirs = self.utilize_existing_split()
+
+            if (len(train_subdirs) == 0) or (len(val_subdirs) == 0):
+                raise ValueError('Value of percent_train {} combined with potentially previously recorded train and val samples has led to an empty train or val split given available data in {}.'.format(self.percent_train, self.data_path))
+        
             train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)     
             self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
 
@@ -239,18 +247,13 @@ class GANDLFData(object):
 
             # update the lost data files with added samples
             if (add_train_subdirs is not None) and (add_train_subdirs != []):
-                old_missing_train = set(load_pickle(self.pickled_lost_training_data_path))
-                new_missing_train = list(old_missing_train - set(add_train_subdirs))
-                dump_pickle(new_missing_train, self.pickled_lost_training_data_path)
+                self.create_or_append_to_lost_data_info(kind='train', these_added=set(add_train_subdirs))
             if (add_val_subdirs is not None) and (add_val_subdirs != []):
-                old_missing_val = set(load_pickle(self.pickled_lost_val_data_path))
-                new_missing_val = list(old_missing_val - set(add_val_subdirs))
-                dump_pickle(new_missing_val, self.pickled_lost_val_data_path)
-
+                self.create_or_append_to_lost_data_info(kind='val', these_added=set(add_val_subdirs))
 
         elif self.allow_auto_split:
-
             train_subdirs, val_subdirs = self.compute_fresh_split()
+
             train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
             self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
 
@@ -292,16 +295,12 @@ class GANDLFData(object):
             
             if these_missing_train != set([]):
                 print('\nWARNING: Train samples {} from split {} now missing on disk.\n'.format(these_missing_train, self.split_instance_dirname))
-                # write out what is missing (accounting for previously missing)
-                missing_train = set(load_pickle(self.pickled_lost_training_data_path)) + these_missing_train
-                dump_pickle(list(missing_train), self.pickled_lost_training_data_path)
+                self.create_or_append_to_lost_data_info(kind='train', these_missing=these_missing_train)
                 if not self.allow_disk_data_loss_after_split_creation:
                     raise ValueError('Train samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_train, self.split_instance_dirname))
             if these_missing_val != set([]):
                 print('\nWARNING: Val samples {} from split {} now missing on disk.\n'.format(these_missing_val, self.split_instance_dirname))
-                # write out what is missing (accounting for previously missing)
-                missing_val = set(load_pickle(self.pickled_lost_val_data_path)) + these_missing_val
-                dump_pickle(list(missing_val), self.pickled_lost_val_data_path)
+                self.create_or_append_to_lost_data_info(kind='val', these_missing=these_missing_val)
                 if not self.allow_disk_data_loss_after_split_creation:
                     raise ValueError('Val samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_val, self.split_instance_dirname))
             if self.allow_disk_data_loss_after_split_creation:
@@ -345,7 +344,7 @@ class GANDLFData(object):
             num_train = len(train_subdirs) + len(add_train_subdirs)
             total_samples = num_train + len(val_subdirs) + len(add_val_subdirs)
             for subdir in new_subdirs_to_split:
-                if float(num_train)/float(total_samples) < self.percent_train:
+                if float(num_train) < self.percent_train * float(total_samples):
                     train_subdirs.append(subdir)
                     num_train += 1
                 else:
@@ -366,6 +365,8 @@ class GANDLFData(object):
 
     def compute_fresh_split(self):
 
+        print("\nComputing fresh split\n")
+
         # sorting to make process deterministic for a fixed seed
         subdirs = self.get_sorted_subdirs()
         total_subjects = len(subdirs)
@@ -373,16 +374,9 @@ class GANDLFData(object):
             self.random_generator_instance.shuffle(subdirs)
             # cast back to a list if needed
             subdirs = subdirs.tolist()
-            
-        # compute the split
 
-        # sanity checks
-        if (self.percent_train <= 0.0) or (self.percent_train >= 1.0):
-            raise ValueError('Value of percent_train must be stricly between 0 and 1.') 
+        # compute the split
         split_idx = int(self.percent_train * total_subjects)
-        if (split_idx == 0) or (split_idx == total_subjects):
-            raise ValueError('Value of percent_train {} is leading to empty val or train set due to only {} subjects found under {} '.format(self.percent_train, total_subjects, self.data_path))
-        
         train_subdirs = subdirs[:split_idx]
         val_subdirs = subdirs[split_idx:]
         print('Splitting the {} subjects in {} using percent_train of {}'.format(total_subjects, self.data_path, self.percent_train))
@@ -413,9 +407,39 @@ class GANDLFData(object):
     def recover_csvs_from_pickled_split_info(self):
         print("\nWARNING: The gandlf_data object is recovering missing train and val csvs from pickled split info.\n")
         train_subdirs, val_subdirs = load_pickle(self.pickled_split_path)
+
+        # determining if missing data will prevent us from subdirectory inspection needed to reproduce csvs
+        train_subdirpaths = self.subdirs_to_subdirpaths(train_subdirs)
+        val_subdirpaths = self.subdirs_to_subdirpaths(val_subdirs)
+        for _path in train_subdirpaths:
+            if not os.path.exists(_path):
+                raise ValueError("Recovery of train csv from pickled split info failed due to data missing on disk that is reference in the pickle.")
+        for _path in val_subdirpaths:
+            if not os.path.exists(_path):
+                raise ValueError("Recovery of val csv from pickled split info failed due to data missing on disk that is reference in the pickle.")
+
         train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
         dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
         dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
+
+    def create_or_append_to_lost_data_info(self, kind, these_missing=set([]), these_added=set([])):
+        if kind == 'train':
+            path = self.pickled_lost_training_data_path
+        elif kind == 'val':
+            path = self.pickled_lost_val_data_path
+        else:
+            raise ValueError('Kind must be train or val.')
+
+        if (these_missing != set([])) and (these_added != set([])):
+            raise ValueError('Other code in this function was written without this use-case in mind.')
+
+        # write out what is missing (accounting for previously missing)
+        if os.path.exists(path):
+            missing = set(load_pickle(path)).union(these_missing) - these_added
+        else:
+            # here I don't include added data info as non-empty added data means empty missing data
+            missing = these_missing
+        dump_pickle(list(missing), path)
 
     def set_train_and_val_loaders(self, train_dataframe, val_dataframe):
         self.train_loader, self.penalty_loader = self.get_loaders(data_frame=train_dataframe, train=True, augmentations=self.train_augmentations)
@@ -462,8 +486,7 @@ class GANDLFData(object):
     
     def create_inference_dataframe(self):
         
-        inference_paths = self.subdirs_to_subdirpaths(self.get_sorted_subdirs())
-        
+        inference_paths = self.subdirs_to_subdirpaths(self.get_sorted_subdirs())  
         # create the dataframes
         inference_dataframe = self.create_dataframe_from_subdir_paths(inference_paths, include_labels=False)
     
