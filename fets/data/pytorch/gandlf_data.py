@@ -96,6 +96,7 @@ class GANDLFData(object):
                  data_preprocessing=None,
                  split_instance_dirname='default_split_instance',
                  np_split_seed=9264097,
+                 handle_missing_datafiles=False,
                  q_max_length=1,
                  q_num_workers=0,
                  excluded_subdirs = ['log', 'logs', 'split_info'],
@@ -173,6 +174,8 @@ class GANDLFData(object):
         self.percent_train = percent_train
         self.allow_new_data_into_preexisting_split = allow_new_data_into_preexisting_split
         self.allow_disk_data_loss_after_split_creation = allow_disk_data_loss_after_split_creation
+
+        self.handle_missing_datafiles = handle_missing_datafiles
 
         # sudirectories to skip when listing patient subdirectories inside data directory
         self.excluded_subdirs = excluded_subdirs
@@ -455,15 +458,25 @@ class GANDLFData(object):
     def create_dataframe_from_subdir_paths(self, subdir_paths, include_labels):
 
         columns = {header: [] for header in self.headers_list}
+        incomplete_data_subdirs = []
         for subdir_path in subdir_paths:
             # grab second to last part of path (subdir name)
             subdir = os.path.split(subdir_path)[1]
-            fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, include_labels=include_labels)
-            # write dataframe row
-            columns[self.headers_list[0]].append(subdir)
-            for header in self.headers_list[1:]:
-                columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
-        return pd.DataFrame(columns)
+            fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, 
+                                                                 include_labels=include_labels, 
+                                                                 handle_missing_datafiles=self.handle_missing_datafiles)
+            if fpaths is None:
+                if self.handle_missing_datafiles:
+                    incomplete_data_subdirs.append(subdir_path)
+                    continue
+                else:
+                    raise ValueError('Unexpected None return from get_appropriate_fiile_paths_from_subject_dir')
+            else:
+                # write dataframe row
+                columns[self.headers_list[0]].append(subdir)
+                for header in self.headers_list[1:]:
+                    columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
+        return pd.DataFrame(columns), incomplete_data_subdirs
 
     def get_sorted_subdirs(self):
         subdirs_list = os.listdir(self.data_path)
@@ -478,8 +491,19 @@ class GANDLFData(object):
         val_paths = self.subdirs_to_subdirpaths(val_subdirs)
                         
         # create the dataframes
-        train_dataframe = self.create_dataframe_from_subdir_paths(train_paths, include_labels=True)
-        val_dataframe = self.create_dataframe_from_subdir_paths(val_paths, include_labels=True)
+        train_dataframe, incomplete_train_subdirs = self.create_dataframe_from_subdir_paths(train_paths, include_labels=True)
+        val_dataframe, incomplete_val_subdirs = self.create_dataframe_from_subdir_paths(val_paths, include_labels=True)
+
+        # FIXME: Write this info to a file?
+        if len(incomplete_train_subdirs) != 0:
+            print("\nThe following subdirs were slated for training, but were missing needed files:")
+            print(incomplete_train_subdirs)
+            print("")
+
+        if len(incomplete_val_subdirs) != 0:
+            print("\nThe following subdirs were slated for validation, but were missing needed files:")
+            print(incomplete_val_subdirs)
+            print("")
 
         return train_dataframe, val_dataframe
 
