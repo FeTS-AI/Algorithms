@@ -71,7 +71,15 @@ def load_pickle(fname):
 
 def dump_pickle(objct, fname):
     with open(fname, 'wb') as _file:
-        pkl.dump(objct, _file)    
+        pkl.dump(objct, _file)
+
+
+def dataframe_as_string(dataframe):
+    return dataframe.astype(str)
+
+
+def dataframe_to_string_csv(dataframe, path):
+    dataframe_as_string(dataframe).to_csv(path, index=False)    
 
 
 class GANDLFData(object):
@@ -183,11 +191,7 @@ class GANDLFData(object):
         self.inference_loader = []
             
         # initializations
-        self.train_dataframe = None
-        self.val_dataframe = None
         all_split_info_present = False
-        self.train_subdirs = None
-        self.val_subdirs = None
 
         self.set_headers_and_headers_list(self.train_val_headers, list_needed=True)
 
@@ -213,6 +217,7 @@ class GANDLFData(object):
                 if not csvs_exist:
                     self.recover_csvs_from_pickled_split_info()
                 if not pickled_split_exists:
+                    print("\nWARNING: The gandlf_data object is recovering missing pickled split info from train and val csvs.\n")
                     self.recover_pickled_split_info_from_csvs()
 
                 all_split_info_present = True
@@ -227,8 +232,8 @@ class GANDLFData(object):
             self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
 
             # now that we know none of the subdirs led to missing file exceptions (from ImagesFromDataFrame) we write out the split info
-            train_dataframe.to_csv(self.train_csv_path, index=False)
-            val_dataframe.to_csv(self.val_csv_path, index=False)
+            dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
+            dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
             dump_pickle((train_subdirs, val_subdirs), self.pickled_split_path)
 
         elif self.allow_auto_split:
@@ -239,9 +244,9 @@ class GANDLFData(object):
 
             # now that we know none of the subdirs led to missing file exceptions (from ImagesFromDataFrame) we write out the split info
             os.mkdir(self.split_instance_dirpath)
-            train_dataframe.to_csv(self.train_csv_path, index=False)
-            val_dataframe.to_csv(self.val_csv_path, index=False)
-            dump_pickle((self.train_subdirs, self.val_subdirs), self.pickled_split_path)
+            dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
+            dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
+            dump_pickle((train_subdirs, val_subdirs), self.pickled_split_path)
         else:
             raise ValueError('No split under the name of {} is present, and allow_auto_split is False.'.format(self.split_instance_dirname))
 
@@ -284,8 +289,8 @@ class GANDLFData(object):
                 print('\nWriting out new split info to reflect data missing since previous split creation.')
                 dump_pickle((list(train_subdirs), list(val_subdirs)), self.pickled_split_path) 
                 temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
-                temp_train_dataframe.to_csv(self.train_csv_path, index=False)
-                temp_val_dataframe.to_csv(self.val_csv_path, index=False)
+                dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
+                dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
          
         if self.allow_new_data_into_preexisting_split:
        
@@ -346,7 +351,7 @@ class GANDLFData(object):
         train_subdirs = subdirs[:split_idx]
         val_subdirs = subdirs[split_idx:]
         print('Splitting the {} subjects in {} using percent_train of {}'.format(total_subjects, self.data_path, self.percent_train))
-        print('Resulting train and val sets have counts {} and {} respectively.'.format(len(self.train_subdirs), len(self.val_subdirs)))
+        print('Resulting train and val sets have counts {} and {} respectively.'.format(len(train_subdirs), len(val_subdirs)))
 
         return train_subdirs, val_subdirs   
 
@@ -360,12 +365,11 @@ class GANDLFData(object):
         self.inference_loader, _ = self.get_loaders(data_frame=inference_dataframe, train=False, augmentations=None)
     
     def recover_pickled_split_info_from_csvs(self, to_disk=True):
-        print("\nWARNING: The gandlf_data object is recovering missing pickled split info from train and val csvs.\n")
-        self.train_dataframe = pd.read_csv(self.train_csv_path)
-        self.val_dataframe = pd.read_csv(self.val_csv_path)
-        self.train_subdirs = list(self.train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-        self.val_subdirs = list(self.val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-        subdir_tuple = (self.train_subdirs, self.val_subdirs)
+        temp_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path))
+        temp_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path))
+        train_subdirs = list(temp_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+        val_subdirs = list(temp_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+        subdir_tuple = (train_subdirs, val_subdirs)
         if to_disk:
             dump_pickle(subdir_tuple, self.pickled_split_path)
         else:
@@ -374,9 +378,9 @@ class GANDLFData(object):
     def recover_csvs_from_pickled_split_info(self):
         print("\nWARNING: The gandlf_data object is recovering missing train and val csvs from pickled split info.\n")
         train_subdirs, val_subdirs = load_pickle(self.pickled_split_path)
-        self.train_dataframe, self.val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
-        self.train_dataframe.to_csv(self.train_csv_path, index=False)
-        self.val_dataframe.to_csv(self.val_csv_path, index=False)
+        train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
+        dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
+        dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
 
     def set_train_and_val_loaders(self, train_dataframe, val_dataframe):
         self.train_loader, self.penalty_loader = self.get_loaders(data_frame=train_dataframe, train=True, augmentations=self.train_augmentations)
