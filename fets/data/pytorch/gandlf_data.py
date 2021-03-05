@@ -292,12 +292,16 @@ class GANDLFData(object):
             
             if these_missing_train != set([]):
                 print('\nWARNING: Train samples {} from split {} now missing on disk.\n'.format(these_missing_train, self.split_instance_dirname))
-                dump_pickle(list(these_missing_train), self.pickled_lost_training_data_path)
+                # write out what is missing (accounting for previously missing)
+                missing_train = set(load_pickle(self.pickled_lost_training_data_path)) + these_missing_train
+                dump_pickle(list(missing_train), self.pickled_lost_training_data_path)
                 if not self.allow_disk_data_loss_after_split_creation:
                     raise ValueError('Train samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_train, self.split_instance_dirname))
             if these_missing_val != set([]):
                 print('\nWARNING: Val samples {} from split {} now missing on disk.\n'.format(these_missing_val, self.split_instance_dirname))
-                dump_pickle(list(these_missing_val), self.pickled_lost_val_data_path)
+                # write out what is missing (accounting for previously missing)
+                missing_val = set(load_pickle(self.pickled_lost_val_data_path)) + these_missing_val
+                dump_pickle(list(missing_val), self.pickled_lost_val_data_path)
                 if not self.allow_disk_data_loss_after_split_creation:
                     raise ValueError('Val samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_val, self.split_instance_dirname))
             if self.allow_disk_data_loss_after_split_creation:
