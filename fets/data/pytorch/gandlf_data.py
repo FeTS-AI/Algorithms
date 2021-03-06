@@ -72,8 +72,8 @@ def load_pickle(fpath):
         return None
 
 
-def dump_pickle(objct, fpath):
-    with open(fpath, 'wb') as _file:
+def dump_pickle(objct, path):
+    with open(path, 'wb') as _file:
         pkl.dump(objct, _file)
 
 
@@ -223,7 +223,6 @@ class GANDLFData(object):
         if self.allow_new_data:
             to_split = on_disk - init_train - init_val
             new_train, new_val = self.split(list(to_split), 
-                                            percent_train=self.percent_train, 
                                             num_existing_train=len(init_train), 
                                             num_existing_val=len(init_val))
             train = list(init_train.union(set(new_train)))
@@ -241,13 +240,13 @@ class GANDLFData(object):
         if not os.path.exists(self.split_instance_dirpath):
             os.mkdir(self.split_instance_dirpath)
         self.record_lost_data(lost_train=list(past_train - on_disk) , lost_val=list(past_val - on_disk))
-        self.record_split_info(train=train, val=val)
+        self.record_split_info(train=train, val=val, subdirs_to_fpaths=subdirs_to_fpaths)
         
 
         train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val, subdirs_to_fpaths=subdirs_to_fpaths)     
         self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
 
-    def get_data_from_disk(self, include_labels=True):
+    def get_data_from_disk(self, include_labels=True, return_as_set=True):
         good_subdirs = []
         subdirs_to_fpaths = {}
         incomplete_subdirs = []
@@ -267,6 +266,8 @@ class GANDLFData(object):
                 subdirs_to_fpaths[subdir] = fpaths
         if len(incomplete_subdirs) != 0:
             print('\nIgnoring subdirecories: {} as they are missing needed data files.\n')
+        if return_as_set:
+            good_subdirs = set(good_subdirs)
         return good_subdirs, subdirs_to_fpaths, incomplete_subdirs
                        
     def subdirs_to_subdirpaths(self, subdirs):
@@ -306,7 +307,7 @@ class GANDLFData(object):
             if np.any(exists_in_all_or_none) and not np.all(exists_in_all_or_none):
                 raise ValueError('All or none of: {} should exists, but ecactly one is found!! Carefully recover (contents were printed to stdout during last run).'.format(need_all_or_none))
 
-    def get_split_info()(self):
+    def get_split_info(self):
         self.sanity_check_split_info()
         # get split from csvs and pickle (above check confirms they exist if split instance does)
         if not os.path.exists(self.split_instance_dirpath):
@@ -351,11 +352,13 @@ class GANDLFData(object):
 
         return set(lost_train), set(lost_val)
 
-    def record_split_info(self, train, val): 
+    def record_split_info(self, train, val, subdirs_to_fpaths): 
         print('\nRecording following subdirectories used for training: {}\n'.format(train))
         print('\nRecording following subdirectories used for validation: {}\n'.format(val))   
-        dump_pickle((list(train), list(val)), self.pickled_split_path) 
-        temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val)
+        dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
+        temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
+                                                                                    val_subdirs=val, 
+                                                                                    subdirs_to_fpaths=subdirs_to_fpaths)
         dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
         dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
     
@@ -368,8 +371,8 @@ class GANDLFData(object):
         if (not lists_empty) or old_lost_info_present:
             print('\nRecording lost known training: {}\n'.format(lost_train))
             print('\nRecording lost known validation: {}\n'.format(lost_val))
-            dump_pickle(list(lost_train), fname=self.pickled_lost_train_path)
-            dump_pickle(list(lost_val), fname=self.pickled_lost_val_path) 
+            dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
+            dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
 
     def raise_exception_for_undesirable_split(self, lost_train, lost_val, train, val):
 
@@ -443,17 +446,14 @@ class GANDLFData(object):
 
     def create_train_val_dataframes(self, train_subdirs, val_subdirs, subdirs_to_fpaths):
                 
-        train_paths = self.subdirs_to_subdirpaths(train_subdirs)
-        val_paths = self.subdirs_to_subdirpaths(val_subdirs)
-                        
         # create the dataframes
-        train_dataframe = self.create_dataframe(train_paths, subdirs_to_fpaths, include_labels=True)
-        val_dataframe = self.create_dataframe(val_paths, subdirs_to_fpaths, include_labels=True)
+        train_dataframe = self.create_dataframe(train_subdirs, subdirs_to_fpaths, include_labels=True)
+        val_dataframe = self.create_dataframe(val_subdirs, subdirs_to_fpaths, include_labels=True)
 
         return train_dataframe, val_dataframe
 
     def setup_for_inference(self):
-        self.set_headers_and_headers_list(self.inference_headers, list_needed=True)
+        self.set_dataframe_headers(self.inference_headers, list_needed=True)
         inference_dataframe = self.create_inference_dataframe()
         
         self.train_loader = []
@@ -463,10 +463,9 @@ class GANDLFData(object):
 
     
     def create_inference_dataframe(self):
-        subdirs, subdirs_to_fpaths, _ = self.get_data_from_disk(include_labels=False)
-        paths = self.subdirs_to_subdirpaths(subdirs)
+        inference_subdirs, subdirs_to_fpaths, _ = self.get_data_from_disk(include_labels=False, return_as_set=False)
         # create the dataframes
-        inference_dataframe = self.create_dataframe(self, subdirs, subdirs_to_fpaths, include_labels=False)
+        inference_dataframe = self.create_dataframe(inference_subdirs, subdirs_to_fpaths, include_labels=False)
     
         return inference_dataframe
         
