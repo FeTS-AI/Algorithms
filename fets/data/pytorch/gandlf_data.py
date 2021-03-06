@@ -103,10 +103,9 @@ class GANDLFData(object):
                  percent_train = 0.8,
                  in_memory=False,
                  data_usage='train-val',
-                 allow_auto_split = False, 
                  shuffle_before_train_val_split=True,
-                 allow_new_data_into_preexisting_split = True,
-                 allow_disk_data_loss_after_split_creation = True,
+                 allow_new_data = True,
+                 allow_data_loss= True,
                  **kwargs):
 
         # some hard-coded atributes
@@ -167,14 +166,21 @@ class GANDLFData(object):
 
         self.preprocessing = data_preprocessing
         self.split_instance_dirname = split_instance_dirname
-        # in the event that the split instance directory is absent, do we generate a split or raise and exception?
-        self.allow_auto_split = allow_auto_split
         self.shuffle_before_train_val_split = shuffle_before_train_val_split
         self.random_generator_instance = np.random.default_rng(np_split_seed)
-        self.percent_train = percent_train
-        self.allow_new_data_into_preexisting_split = allow_new_data_into_preexisting_split
-        self.allow_disk_data_loss_after_split_creation = allow_disk_data_loss_after_split_creation
 
+        self.percent_train = percent_train
+        # sanity check
+        if (self.percent_train <= 0.0) or (self.percent_train >= 1.0):
+            raise ValueError('Value of percent_train must be stricly between 0 and 1.')
+
+        # do we allow new data into training and validation (when some train and val was previously assigned)
+        self.allow_new_data = allow_new_data
+        # do we throw exceptions for missing disk data previously recorded as train or val samples,
+        # or record information in a file and do our best to restore percent_train with new samples
+        self.allow_data_loss = allow_data_loss
+
+        # do we throw exceptions for data subdirectories with missing files, or just skip them
         self.handle_missing_datafiles = handle_missing_datafiles
 
         # sudirectories to skip when listing patient subdirectories inside data directory
@@ -193,19 +199,13 @@ class GANDLFData(object):
     def setup_for_train_val(self):
         self.inference_loader = []
             
-        # initialization
-        all_split_info_present = False
-
-        # sanity check
-        if (self.percent_train <= 0.0) or (self.percent_train >= 1.0):
-            raise ValueError('Value of percent_train must be stricly between 0 and 1.') 
-
         self.set_headers_and_headers_list(self.train_val_headers, list_needed=True)
 
         split_info_dirpath = os.path.join(self.data_path, 'split_info')
         if not os.path.exists(split_info_dirpath):
             os.mkdir(split_info_dirpath)
-        #  path to directory meant to hold train.csv and val.csv for a specific split
+
+        #  paths
         self.split_instance_dirpath = os.path.join(split_info_dirpath, self.split_instance_dirname)
         self.train_csv_path = os.path.join(self.split_instance_dirpath, 'train.csv')
         self.val_csv_path = os.path.join(self.split_instance_dirpath, 'val.csv')
@@ -213,177 +213,128 @@ class GANDLFData(object):
         self.pickled_lost_training_data_path = os.path.join(self.split_instance_dirpath, 'lost_train.pkl')
         self.pickled_lost_val_data_path = os.path.join(self.split_instance_dirpath, 'lost_val.pkl')
 
+        on_disk, subdirs_to_fpaths, _ = self.get_good_disk_subdirs(subdirs=os.listdir(self.data_path))
+
+        past_train, past_val = self.sanity_check_and_get_past_data()
+         # sanity check
+        if past_train.intersection(past_val) != set():
+            raise ValueError('Somehow there is a record of training intersecting validation.')
+
+        # update missing historical data
+        missing_train = past_train - on_disk 
+        missing_val = past_val - on_disk
+        self.raise_exception_or_record_missing_data(missing_train=missing_train, missing_val=missing_val)
+
+        init_train = on_disk.intersection(past_train)
+        init_val = on_disk.intersection(past_val)
+
+        if self.allow_new_data:
+
+            to_split = on_disk - init_train - init_val
+            if (len(past_train != 0)) and (not self.allow_new_data_into_preexisting_split) and (len(to_split) != 0):
+                # new data with existing split info, and no permission to do so
+                raise ValueError('New data present since existing split, and allow_new_data_into_preexisting_split is False')
+
+            new_train, new_val = self.split(list(to_split), 
+                                            percent_train=self.percent_train, 
+                                            num_existing_train=len(init_train), 
+                                            num_existing_val=len(init_val))
+
+            train = list(init_train.union(set(new_train)))
+            val = list(init_val.union(set(new_val)))
+
+            if (len(train) !=0) or (len(val) != 0):
+                raise ValueError('Split (accounting for percent_train, historical train/val assignment, and new data) results in an empty train or val set.')
+
+        else:
+            train = list(init_train)
+            val = list(init_val)
+
+        self.record_split_info(train=train, val=val)
+
+        train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val, subdirs_to_fpaths=subdirs_to_fpaths)     
+        self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
+
+    def get_good_disk_subdirs(self, subdirs, include_labels=True):
+        good_subdirs = []
+        subdirs_to_fpaths = {}
+        incomplete_subdirs = []
+        for subdir in subdirs:
+            subdir_path = os.path.join(self.data_path, subdir)
+            fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, 
+                                                                 include_labels=include_labels,         
+                                                                 handle_missing_datafiles=self.handle_missing_datafiles)
+            if fpaths is None:
+                if self.handle_missing_datafiles:
+                    incomplete_subdirs.append(subdir_path)
+                    continue
+                else:
+                    raise ValueError('Unexpected None return from get_appropriate_fiile_paths_from_subject_dir')
+            else:
+                good_subdirs.append(subdir)
+                subdirs_to_fpaths[subdir] = fpaths
+        if len(incomplete_subdirs) != 0:
+            print('\nIgnoring subdirecories: {} as they are missing needed data files.\n')
+        return good_subdirs, subdirs_to_fpaths, incomplete_subdirs
+
+    def sanity_check_and_get_past_data(self):
         # check for consistency between train/val csvs and pickled split info, or recover (if possible) from missing files  
         if  os.path.exists(self.split_instance_dirpath):
-            # a split under this name exists, is there info in need of recovery?
-            csvs_exist = np.all([os.path.exists(path) for path in [self.train_csv_path, self.val_csv_path]])
-            pickled_split_exists = os.path.exists(self.pickled_split_path)
-
-            if csvs_exist or pickled_split_exists:
-                # here we have enough info, but may need to reproduce the redundant info
-                if not csvs_exist:
-                    self.recover_csvs_from_pickled_split_info()
-                if not pickled_split_exists:
-                    print("\nWARNING: The gandlf_data object is recovering missing pickled split info from train and val csvs.\n")
-                    self.recover_pickled_split_info_from_csvs()
-
-                all_split_info_present = True
-                
-            else:
-                raise ValueError("A train/val split {} of parent directory {} still exists, but is missing enough info to not be recoverable. Either recover the csvs, or pickled split, or remove {} and allow auto split.".format(self.data_path, self.split_instance_dirname, self.split_instance_dirname)) 
-
-        if all_split_info_present:
-
-            train_subdirs, val_subdirs, add_train_subdirs, add_val_subdirs = self.utilize_existing_split()
-
-            if (len(train_subdirs) == 0) or (len(val_subdirs) == 0):
-                raise ValueError('Value of percent_train {} combined with potentially previously recorded train and val samples has led to an empty train or val split given available data in {}.'.format(self.percent_train, self.data_path))
-        
-            train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)     
-            self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
-
-            # now that we know none of the subdirs led to missing file exceptions (from ImagesFromDataFrame) we write out the split info
-            
-            dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
-            dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
-            dump_pickle((train_subdirs, val_subdirs), self.pickled_split_path)
-
-            # update the lost data files with added samples
-            if (add_train_subdirs is not None) and (add_train_subdirs != []):
-                self.create_or_append_to_lost_data_info(kind='train', these_added=set(add_train_subdirs))
-            if (add_val_subdirs is not None) and (add_val_subdirs != []):
-                self.create_or_append_to_lost_data_info(kind='val', these_added=set(add_val_subdirs))
-
-        elif self.allow_auto_split:
-            train_subdirs, val_subdirs = self.compute_fresh_split()
-
-            train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
-            self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
-
-            # now that we know none of the subdirs led to missing file exceptions (from ImagesFromDataFrame) we write out the split info
-            os.mkdir(self.split_instance_dirpath)
-            dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
-            dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
-            dump_pickle((train_subdirs, val_subdirs), self.pickled_split_path)
+            # this will also update the split info to account for missing files
+            # TODO: Make sure it is ok you are not recovering any split info (make sure in all cases it will be restored or not left with bad info)
+            split_train, split_val = self.sanity_check_and_return_split_info()
+            missing_train, missing_val = self.get_missing_data()
         else:
-            raise ValueError('No split under the name of {} is present, and allow_auto_split is False.'.format(self.split_instance_dirname))
-
-    def utilize_existing_split(self):
-
-        # check for consistency of pickled split info against csvs (meanwhile ensuring population of self dataframes)
-        csv_train_subdirs, csv_val_subdirs = self.recover_pickled_split_info_from_csvs(to_disk=False)
-        pklfile_train_subdirs, pklfile_val_subdirs = load_pickle(self.pickled_split_path)
-        if csv_train_subdirs != pklfile_train_subdirs:
-            raise ValueError('Train csv and pickled split info do not match (careful review required to ensure we have not introduced train samples into val or vice versa).')
-        if csv_val_subdirs != pklfile_val_subdirs:
-            raise ValueError('Validation csv and pickled split info do not match (careful review required to ensure we have not introduced train samples into val or vice versa).')
-
-        # checking for data lost from disk since split was produced
-    
-        disk_subdirs = set(self.get_sorted_subdirs())
-        split_train_subdirs = set(csv_train_subdirs)        
-        split_val_subdirs = set(csv_val_subdirs)
-
-        these_missing_train = split_train_subdirs - disk_subdirs
-        these_missing_val = split_val_subdirs - disk_subdirs
-
-        # this is the new preliminary split (reflects any missing data)
-        train_subdirs = split_train_subdirs - these_missing_train
-        val_subdirs = split_val_subdirs - these_missing_val
-
-        add_train_subdirs = None
-        add_val_subdirs = None
-
-        if (these_missing_train != set([])) or (these_missing_val != set([])):
+            os.mkdir(self.split_instance_dirpath)
             
-            if these_missing_train != set([]):
-                print('\nWARNING: Train samples {} from split {} now missing on disk.\n'.format(these_missing_train, self.split_instance_dirname))
-                self.create_or_append_to_lost_data_info(kind='train', these_missing=these_missing_train)
-                if not self.allow_disk_data_loss_after_split_creation:
-                    raise ValueError('Train samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_train, self.split_instance_dirname))
-            if these_missing_val != set([]):
-                print('\nWARNING: Val samples {} from split {} now missing on disk.\n'.format(these_missing_val, self.split_instance_dirname))
-                self.create_or_append_to_lost_data_info(kind='val', these_missing=these_missing_val)
-                if not self.allow_disk_data_loss_after_split_creation:
-                    raise ValueError('Val samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_val, self.split_instance_dirname))
-            if self.allow_disk_data_loss_after_split_creation:
-                print('\nWriting out new split info to reflect data missing since previous split creation.')
-                dump_pickle((list(train_subdirs), list(val_subdirs)), self.pickled_split_path) 
-                temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
-                dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
-                dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
-         
-        if self.allow_new_data_into_preexisting_split:
-       
-            # recovering information about all missing subdirs (to ensure old val does not become new train and vice versa)
-            if os.path.exists(self.pickled_lost_training_data_path):
-                missing_train = set(load_pickle(self.pickled_lost_training_data_path))
-            else:
-                missing_train = set([])
-            if os.path.exists(self.pickled_lost_val_data_path):
-                missing_val = set(load_pickle(self.pickled_lost_val_data_path))
-            else:
-                missing_val = set([])
-
-            # we know how to place these subdirs (may be empty)
-            add_train_subdirs = disk_subdirs.intersection(missing_train) 
-            add_val_subdirs = disk_subdirs.intersection(missing_val) 
-             
-            # these we will split (trying to maintain self.percent_train best we can) 
-            new_subdirs_to_split = disk_subdirs - split_train_subdirs - split_val_subdirs - add_train_subdirs - add_val_subdirs
+            # we will always allow new data when no past split is recorded
+            self.allow_new_data = True
             
-            # casting to lists now
-            train_subdirs = list(train_subdirs)
-            val_subdirs = list(val_subdirs)
-            add_train_subdirs = list(add_train_subdirs)
-            add_val_subdirs = list(add_val_subdirs)
-            new_subdirs_to_split = list(new_subdirs_to_split)
+            last_split_train = set()
+            last_split_val = set()
+            last_missing_train = set()
+            last_missing_val = set()
+        
+        # combine old split with missing data
+        past_train = split_train.union(last_missing_train)
+        past_val = split_val.union(last_missing_val)
 
-            # sorting then shuffling for reproducibility with fixed np_split_seed and fixed old split info and new samples
-            new_subdirs_to_split = np.sort(new_subdirs_to_split)
-            self.random_generator_instance.shuffle(new_subdirs_to_split)
+        return past_train, past_val
 
-            # one by one, append to train or val according to  
-            num_train = len(train_subdirs) + len(add_train_subdirs)
-            total_samples = num_train + len(val_subdirs) + len(add_val_subdirs)
-            for subdir in new_subdirs_to_split:
-                if float(num_train) < self.percent_train * float(total_samples):
-                    train_subdirs.append(subdir)
-                    num_train += 1
-                else:
-                    val_subdirs.append(subdir)
-                total_samples += 1
-                
-
-            train_subdirs = train_subdirs + add_train_subdirs
-            val_subdirs = val_subdirs + add_val_subdirs
-        # this cast to list is due to the case that the previous conditional block is skipped
-        return list(train_subdirs), list(val_subdirs), add_train_subdirs, add_val_subdirs
-                
+    def get_last_missing_data(self):
+        # recovering information about all missing subdirs (to ensure old val does not become new train and vice versa)
+        if os.path.exists(self.pickled_lost_training_data_path):
+            missing_train = set(load_pickle(self.pickled_lost_training_data_path))
+        else:
+            missing_train = set([])
+        if os.path.exists(self.pickled_lost_val_data_path):
+            missing_val = set(load_pickle(self.pickled_lost_val_data_path))
+        else:
+            missing_val = set([])
+        return missing_train, missing_val
+                       
     def subdirs_to_subdirpaths(self, subdirs):
         return [os.path.join(self.data_path, subdir) for subdir in subdirs]
 
     def subdirpaths_to_subdirs(self, subdirpaths):
         return [os.path.split(path)[1] for path in subdirpaths]
 
-    def compute_fresh_split(self):
-
-        print("\nComputing fresh split\n")
+    def split(self, subdirs, num_existing_train, num_existing_val):
 
         # sorting to make process deterministic for a fixed seed
-        subdirs = self.get_sorted_subdirs()
-        total_subjects = len(subdirs)
+        subdirs = np.sort(subdirs)
+        total_subjects = len(subdirs) + num_existing_train + num_existing_val
         if self.shuffle_before_train_val_split:  
             self.random_generator_instance.shuffle(subdirs)
             # cast back to a list if needed
             subdirs = subdirs.tolist()
 
-        # compute the split
-        split_idx = int(self.percent_train * total_subjects)
+        # we want: (new_train + exist_train)/tot ~ percent_train ; so new_train ~ tot * percent_train - existing_train
+        split_idx = int(self.percent_train * total_subjects - num_existing_train)
         train_subdirs = subdirs[:split_idx]
         val_subdirs = subdirs[split_idx:]
-        print('Splitting the {} subjects in {} using percent_train of {}'.format(total_subjects, self.data_path, self.percent_train))
-        print('Resulting train and val sets have counts {} and {} respectively.'.format(len(train_subdirs), len(val_subdirs)))
+        print('Splitting the {} additional subjects in {} using percent_train of {} ({} train and {} val samples already assigned)'.format(total_subjects, self.data_path, self.percent_train, num_existing_train, num_existing_val))
+        print('Resulting additional train and val sets have counts {} and {} respectively.'.format(len(train_subdirs), len(val_subdirs)))
 
         return train_subdirs, val_subdirs   
 
@@ -396,53 +347,81 @@ class GANDLFData(object):
         self.val_loader = []
         self.inference_loader, _ = self.get_loaders(data_frame=inference_dataframe, train=False, augmentations=None)
     
-    def recover_pickled_split_info_from_csvs(self, to_disk=True):
-        temp_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path))
-        temp_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path))
-        train_subdirs = list(temp_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-        val_subdirs = list(temp_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-        subdir_tuple = (train_subdirs, val_subdirs)
-        if to_disk:
-            dump_pickle(subdir_tuple, self.pickled_split_path)
+    def recover_pickled_split_info_from_csvs(self):
+        if not (os.path.exists(self.train_csv_path) and os.path.exists(self.val_csv_path)):
+            subdir_tuple = None
         else:
-            return subdir_tuple
+            temp_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path))
+            temp_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path))
+            train_subdirs = list(temp_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+            val_subdirs = list(temp_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+            subdir_tuple = (train_subdirs, val_subdirs)
+        return subdir_tuple
 
-    def recover_csvs_from_pickled_split_info(self):
-        print("\nWARNING: The gandlf_data object is recovering missing train and val csvs from pickled split info.\n")
-        train_subdirs, val_subdirs = load_pickle(self.pickled_split_path)
 
-        # determining if missing data will prevent us from subdirectory inspection needed to reproduce csvs
-        train_subdirpaths = self.subdirs_to_subdirpaths(train_subdirs)
-        val_subdirpaths = self.subdirs_to_subdirpaths(val_subdirs)
-        for _path in train_subdirpaths:
-            if not os.path.exists(_path):
-                raise ValueError("Recovery of train csv from pickled split info failed due to data missing on disk that is reference in the pickle.")
-        for _path in val_subdirpaths:
-            if not os.path.exists(_path):
-                raise ValueError("Recovery of val csv from pickled split info failed due to data missing on disk that is reference in the pickle.")
+    WILL DELETE def recover_split_info_if_needed(self):
+        # a split under this name exists, is there info in need of recovery?
+        csvs_exist = np.all([os.path.exists(path) for path in [self.train_csv_path, self.val_csv_path]])
+        pickled_split_exists = os.path.exists(self.pickled_split_path)
 
-        train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train_subdirs, val_subdirs=val_subdirs)
-        dataframe_to_string_csv(dataframe=train_dataframe, path=self.train_csv_path)
-        dataframe_to_string_csv(dataframe=val_dataframe, path=self.val_csv_path)
-
-    def create_or_append_to_lost_data_info(self, kind, these_missing=set([]), these_added=set([])):
-        if kind == 'train':
-            path = self.pickled_lost_training_data_path
-        elif kind == 'val':
-            path = self.pickled_lost_val_data_path
+        if csvs_exist or pickled_split_exists:
+            # here we have enough info, but may need to reproduce the redundant info
+            if not csvs_exist:
+                print("\nWARNING: The gandlf_data object is recovering missing train and val csvs from pickled split info.\n")
+                self.recover_csvs_from_pickled_split_info()
+            if not pickled_split_exists:
+                print("\nWARNING: The gandlf_data object is recovering missing pickled split info from train and val csvs.\n")
+                self.recover_pickled_split_info_from_csvs()
         else:
-            raise ValueError('Kind must be train or val.')
+            raise ValueError("A train/val split {} of parent directory {} still exists, but is missing enough info to not be recoverable. Either recover the csvs, or pickled split, or remove {} and allow auto split.".format(self.data_path, self.split_instance_dirname, self.split_instance_dirname)) 
 
-        if (these_missing != set([])) and (these_added != set([])):
-            raise ValueError('Other code in this function was written without this use-case in mind.')
-
-        # write out what is missing (accounting for previously missing)
-        if os.path.exists(path):
-            missing = set(load_pickle(path)).union(these_missing) - these_added
+    def sanity_check_and_return_split_info(self):
+        # check for consistency of pickled split info against csvs 
+        # (unless one is absent, in which case we give a warning and use the one that remains)
+        sanity_check = True
+        possible_tuple = self.recover_pickled_split_info_from_csvs(to_disk=False)
+        if possible_tuple is None:
+            print('\nOne or both split csvs are missing!!\n')
+            sanity_check = False
+            if not os.path.exists(self.pickled_split_path):
+                raise RuntimeError('csvs and pickled split are missing, so split info not recoverable')
         else:
-            # here I don't include added data info as non-empty added data means empty missing data
-            missing = these_missing
-        dump_pickle(list(missing), path)
+            csv_train_subdirs, csv_val_subdirs = possible_tuple
+            if not os.path.exists(self.pickled_split_path):
+                sanity_check = False
+        if os.path.exists(self.pickled_split_path):
+                train_subdirs, val_subdirs = load_pickle(self.pickled_split_path)
+                if sanity_check:
+                    pklfile_train_subdirs = train_subdirs
+                    pklfile_val_subdirs = val_subdirs
+            WORKING HERE
+        if sanity_check:
+            if csv_train_subdirs != pklfile_train_subdirs:
+                raise ValueError('Train csv and pickled split info do not match (careful review required to ensure we have not introduced train samples into val or vice versa).')
+            if csv_val_subdirs != pklfile_val_subdirs:
+                raise ValueError('Validation csv and pickled split info do not match (careful review required to ensure we have not introduced train samples into val or vice versa).')
+        return set(pklfile_train_subdirs), set(pklfile_val_subdirs)
+
+    def raise_exception_or_record_missing_data(self, missing_train, missing_val):
+
+        if (missing_train != set([])) or (missing_val != set([])):
+            
+            if missing_train != set([]):
+                print('\nWARNING: Train samples {} from split {} now missing on disk.\n'.format(missing_train, self.split_instance_dirname))
+                dump_pickle(list(missing_train), fname=self.pickled_lost_training_data_path)
+                if not self.allow_data_loss:
+                    raise ValueError('Train samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_train, self.split_instance_dirname))
+            if missing_val != set([]):
+                print('\nWARNING: Val samples {} from split {} now missing on disk.\n'.format(missing_val, self.split_instance_dirname))
+                dump_pickle(list(missing_val), fname=self.pickled_lost_val_data_path)
+                if not self.allow_data_loss:
+                    raise ValueError('Val samples {} from split {} now missing on disk and allow_disk_data_loss_after_split is False.'.format(these_missing_val, self.split_instance_dirname))         
+            
+    def record_split_info(self, train, val):    
+        dump_pickle((list(train), list(val)), self.pickled_split_path) 
+        temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val)
+        dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
+        dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
 
     def set_train_and_val_loaders(self, train_dataframe, val_dataframe):
         self.train_loader, self.penalty_loader = self.get_loaders(data_frame=train_dataframe, train=True, augmentations=self.train_augmentations)
@@ -455,28 +434,17 @@ class GANDLFData(object):
             self.headers_list = [self.headers['subjectIDHeader']] + self.headers['channelHeaders'] + [self.headers['labelHeader']] + self.headers['predictionHeaders']
             
 
-    def create_dataframe_from_subdir_paths(self, subdir_paths, include_labels):
+    def create_dataframe(self, subdirs, subdirs_to_fpaths, include_labels):
 
         columns = {header: [] for header in self.headers_list}
-        incomplete_data_subdirs = []
-        for subdir_path in subdir_paths:
-            # grab second to last part of path (subdir name)
-            subdir = os.path.split(subdir_path)[1]
-            fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, 
-                                                                 include_labels=include_labels,         
-                                                                 handle_missing_datafiles=self.handle_missing_datafiles)
-            if fpaths is None:
-                if self.handle_missing_datafiles:
-                    incomplete_data_subdirs.append(subdir_path)
-                    continue
-                else:
-                    raise ValueError('Unexpected None return from get_appropriate_fiile_paths_from_subject_dir')
-            else:
-                # write dataframe row
-                columns[self.headers_list[0]].append(subdir)
-                for header in self.headers_list[1:]:
-                    columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
-        return pd.DataFrame(columns), incomplete_data_subdirs
+        for subdir in subdirs:
+            fpaths = subdirs_to_fpaths[subdir] 
+            # write dataframe row
+            columns[self.headers_list[0]].append(subdir)
+            for header in self.headers_list[1:]:
+                columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
+
+        return pd.DataFrame(columns)
 
     def get_sorted_subdirs(self):
         subdirs_list = os.listdir(self.data_path)
@@ -485,31 +453,20 @@ class GANDLFData(object):
         
         return subdirs_list
 
-    def create_train_val_dataframes(self, train_subdirs, val_subdirs):
+    def create_train_val_dataframes(self, train_subdirs, val_subdirs, subdirs_to_fpaths):
                 
         train_paths = self.subdirs_to_subdirpaths(train_subdirs)
         val_paths = self.subdirs_to_subdirpaths(val_subdirs)
                         
         # create the dataframes
-        train_dataframe, incomplete_train_subdirs = self.create_dataframe_from_subdir_paths(train_paths, include_labels=True)
-        val_dataframe, incomplete_val_subdirs = self.create_dataframe_from_subdir_paths(val_paths, include_labels=True)
-
-        # FIXME: Write this info to a file?
-        if len(incomplete_train_subdirs) != 0:
-            print("\nThe following subdirs were slated for training, but were missing needed files:")
-            print(incomplete_train_subdirs)
-            print("")
-
-        if len(incomplete_val_subdirs) != 0:
-            print("\nThe following subdirs were slated for validation, but were missing needed files:")
-            print(incomplete_val_subdirs)
-            print("")
+        train_dataframe = self.create_dataframe(train_paths, subdirs_to_fpaths, include_labels=True)
+        val_dataframe = self.create_dataframe(val_paths, subdirs_to_fpaths, include_labels=True)
 
         return train_dataframe, val_dataframe
 
     
     def create_inference_dataframe(self):
-        
+        WORK HERE (delete get_sorted_subdirs and other methods not used)
         inference_paths = self.subdirs_to_subdirpaths(self.get_sorted_subdirs())  
         # create the dataframes
         inference_dataframe = self.create_dataframe_from_subdir_paths(inference_paths, include_labels=False)
