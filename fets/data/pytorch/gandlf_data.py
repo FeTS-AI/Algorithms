@@ -231,18 +231,16 @@ class GANDLFData(object):
             train = list(init_train)
             val = list(init_val)
 
-        self.raise_exception_for_undesirable_split(lost_train=list(past_train - on_disk), 
-                                                   lost_val=list(past_val - on_disk), 
+        self.raise_exception_for_undesirable_split(lost_train=past_train - on_disk, 
+                                                   lost_val=past_val - on_disk, 
                                                    train=train,
                                                    val=val)
 
-        # writing out split info 
-        if not os.path.exists(self.split_instance_dirpath):
-            os.mkdir(self.split_instance_dirpath)
+        # writing out lost data and split info 
         self.record_lost_data(lost_train=list(past_train - on_disk) , lost_val=list(past_val - on_disk))
         self.record_split_info(train=train, val=val, subdirs_to_fpaths=subdirs_to_fpaths)
         
-
+        # constructing dataframes, then loaders from the dataframes
         train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val, subdirs_to_fpaths=subdirs_to_fpaths)     
         self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
 
@@ -250,7 +248,7 @@ class GANDLFData(object):
         good_subdirs = []
         subdirs_to_fpaths = {}
         incomplete_subdirs = []
-        for subdir in os.listdir(self.data_path):
+        for subdir in self.get_sorted_subdirs():
             subdir_path = os.path.join(self.data_path, subdir)
             fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, 
                                                                  include_labels=include_labels,         
@@ -278,30 +276,34 @@ class GANDLFData(object):
 
     def split(self, subdirs, num_existing_train, num_existing_val):
 
-        # sorting to make process deterministic for a fixed seed
-        subdirs = np.sort(subdirs)
-        total_subjects = len(subdirs) + num_existing_train + num_existing_val
-        if self.shuffle_before_train_val_split:  
-            self.random_generator_instance.shuffle(subdirs)
-            # cast back to a list if needed
-            subdirs = subdirs.tolist()
+        if len(subdirs) == 0:
+            return [], []
+        else:
 
-        # we want: (new_train + exist_train)/tot ~ percent_train ; so new_train ~ tot * percent_train - existing_train
-        split_idx = int(self.percent_train * total_subjects - num_existing_train)
-        train_subdirs = subdirs[:split_idx]
-        val_subdirs = subdirs[split_idx:]
-        print('Splitting the {} additional subjects in {} using percent_train of {} ({} train and {} val samples already assigned)'.format(total_subjects, self.data_path, self.percent_train, num_existing_train, num_existing_val))
-        print('Resulting additional train and val sets have counts {} and {} respectively.'.format(len(train_subdirs), len(val_subdirs)))
+            # sorting to make process deterministic for a fixed seed
+            subdirs = np.sort(subdirs)
+            total_subjects = len(subdirs) + num_existing_train + num_existing_val
+            if self.shuffle_before_train_val_split:  
+                self.random_generator_instance.shuffle(subdirs)
+                # cast back to a list if needed
+                subdirs = subdirs.tolist()
 
-        return train_subdirs, val_subdirs   
-    
+            # we want: (new_train + exist_train)/tot ~ percent_train ; so new_train ~ tot * percent_train - existing_train
+            split_idx = int(self.percent_train * total_subjects - num_existing_train)
+            train_subdirs = subdirs[:split_idx]
+            val_subdirs = subdirs[split_idx:]
+            print('Splitting the {} additional subjects in {} using percent_train of {} ({} train and {} val samples already assigned)'.format(len(subdirs), self.data_path, self.percent_train, num_existing_train, num_existing_val))
+            print('Resulting additional train and val sets have counts {} and {} respectively.'.format(len(train_subdirs), len(val_subdirs)))
+
+            return train_subdirs, val_subdirs   
+        
     def sanity_check_split_info(self):
         # check for some cases we will not tolerate
         if os.path.exists(self.split_instance_dirpath):
             need_all = [self.train_csv_path, self.val_csv_path, self.pickled_split_path]
             need_all_or_none = [self.pickled_lost_train_path, self.pickled_lost_val_path]
             exists_in_all = [os.path.exists(_path) for _path in need_all]
-            exists_in_all_or_none = [np.path.exist(_path) for _path in need_all_or_none]
+            exists_in_all_or_none = [os.path.exists(_path) for _path in need_all_or_none]
             if not np.all(exists_in_all):
                 raise ValueError('At least one of {} is missing!! Carefully recover (contents were printed to stdout during last run).'.format(need_all))
             if np.any(exists_in_all_or_none) and not np.all(exists_in_all_or_none):
@@ -352,9 +354,13 @@ class GANDLFData(object):
 
         return set(lost_train), set(lost_val)
 
-    def record_split_info(self, train, val, subdirs_to_fpaths): 
+    def record_split_info(self, train, val, subdirs_to_fpaths):
+        train = np.sort(train)
+        val = np.sort(val) 
         print('\nRecording following subdirectories used for training: {}\n'.format(train))
-        print('\nRecording following subdirectories used for validation: {}\n'.format(val))   
+        print('\nRecording following subdirectories used for validation: {}\n'.format(val))
+        if not os.path.exists(self.split_instance_dirpath):
+            os.mkdir(self.split_instance_dirpath)   
         dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
         temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
                                                                                     val_subdirs=val, 
@@ -362,15 +368,19 @@ class GANDLFData(object):
         dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
         dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
     
-    def record_lost_data(self, lost_train, lost_val):   
-        lists_empty = (len(lost_train) + len(lost_val) > 0)
+    def record_lost_data(self, lost_train, lost_val):
+        lost_train = np.sort(lost_train)
+        lost_val = np.sort(lost_val)   
+        lists_empty = (len(lost_train) + len(lost_val) == 0)
         self.sanity_check_split_info()
         # sanity check above ensures either one or both of lost data files are present
         old_lost_info_present = os.path.exists(self.pickled_lost_train_path)
         
         if (not lists_empty) or old_lost_info_present:
-            print('\nRecording lost known training: {}\n'.format(lost_train))
-            print('\nRecording lost known validation: {}\n'.format(lost_val))
+            print('\nRecording lost training: {}\n'.format(lost_train))
+            print('\nRecording lost validation: {}\n'.format(lost_val))
+            if not os.path.exists(self.split_instance_dirpath):
+                os.mkdir(self.split_instance_dirpath)  
             dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
             dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
 
