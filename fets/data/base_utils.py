@@ -48,9 +48,9 @@ def get_appropriate_file_paths_from_subject_dir(dir_path,
     for key, value in return_dict.items():
         if value is None:
             if handle_missing_datafiles:
-                print('\nNo {} file found in {}.\n'.format(key, dir_path))
+                print('\nNo {} file found in {}, but handle_missing_datafiles is True.\n'.format(key, dir_path))
                 return None
             else:
-                raise ValueError('No {} file found in {}.'.format(key, dir_path))
+                raise ValueError('No {} file found in {}, and handle_missing_datafiles is False.'.format(key, dir_path))
                  
     return return_dict
