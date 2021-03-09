@@ -75,7 +75,6 @@ def load_model(directory):
     for t in extra_model_info.tensor_names:
         t_hash = hash_string(t)
         tensor_proto = load_proto(os.path.join(directory, '{}.pbuf'.format(t_hash)), proto_type=TensorProto)
-        print("### loaing tensor: ", t.name)
         if t != tensor_proto.name:
             raise RuntimeError("Loaded the wrong tensor! Meant to load: {} did load: {} read file: {}".format(t, t.name, t_hash))
         tensor_dict_from_proto[t] = tensor_proto_to_numpy_array(tensor_proto)
