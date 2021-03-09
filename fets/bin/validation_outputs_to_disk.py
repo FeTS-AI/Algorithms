@@ -1,34 +1,28 @@
-import numpy as np
-import os
 import argparse
-import math
+import os
 import shutil
-
-import matplotlib.pyplot as plt
-
-from fets.data.pytorch.gandlf_data import GANDLFData
-from fets.models.pytorch.pt_3dresunet.pt_3dresunet import PyTorch3DResUNet as Model
-from fets.data.pytorch import new_labels_from_float_output
+import numpy as np
 
 import SimpleITK as sitk
-
-from openfl import split_tensor_dict_for_holdouts, hash_string
-from openfl.tensor_transformation_pipelines import NoCompressionPipeline
-from openfl.proto.protoutils import load_legacy_model_protobuf, load_proto, tensor_proto_to_numpy_array
-from openfl.proto.collaborator_aggregator_interface_pb2 import TensorProto, ModelHeader, ExtraModelInfo
-from openfl.flplan import create_data_object_with_explicit_data_path, parse_fl_plan, create_model_object
-
-
 import torch
 import torchio
+
+from openfl import split_tensor_dict_for_holdouts, hash_string
+from openfl.proto.protoutils import load_legacy_model_protobuf, load_proto, tensor_proto_to_numpy_array
+from openfl.proto.collaborator_aggregator_interface_pb2 import TensorProto, ExtraModelInfo
+from openfl.flplan import create_data_object_with_explicit_data_path, parse_fl_plan, create_model_object
+
+from fets.data.pytorch import new_labels_from_float_output
 
 
 ################################################################
 # Hard coded parameters (Make sure these apply for your model) #
 ################################################################
 
-# Note the dependency on choice of n_classes and n_channels for model constructor below
+# Note the dependency on converting outputs back to class labels (we check for this to be consistent with plan used)
 class_label_map = {0:0, 1:1, 2:2, 4:4}
+# data has shape 240, 240, 155, we need to pad the z axis in  order to reach divisibility by 16 in all dimensions
+pad_z = 5
 
 def is_mask_present(subject_dict):
     first = next(iter(subject_dict['label']))
@@ -38,13 +32,11 @@ def is_mask_present(subject_dict):
         return True
     
 
-def subject_to_feature_and_label(subject, pad_z=5):
+def subject_to_feature_and_label(subject, pad_z):
     features = torch.cat([subject[key][torchio.DATA] for key in ['1', '2', '3', '4']], dim=1)
-    print(features.shape)
     
     if is_mask_present(subject):
         label = subject['label'][torchio.DATA]
-        print(label.shape)
     else:
         label = None
     
@@ -82,34 +74,41 @@ def load_model(directory):
     return tensor_dict_from_proto
 
 
-#############################################################################
-# Main will require a virtual environment with Algorithms, FeTS, and OpenFL #
-#############################################################################
+#########################################################################################
+# Main will require a virtual environment with Algorithms, GANDLF, and OpenFL installed #
+#########################################################################################
 def main(data_path, 
          plan_path,
          model_weights_path, 
          output_pardir, 
          model_output_tag,
          device, 
-         legacy_model=False):
+         legacy_model_flag=False):
+
+    # TODO: We do not currently make use of the ability for brainmage to infer by first cropping external
+    #       zero planes, or inference by patching and fusing.
 
     flplan = parse_fl_plan(plan_path)
 
-    # check that we are using the gandlf data object
+    # this code currently only supports class_list=[0, 1, 2, 4] (note hard coded class_label_map above)
+    if flplan['data_object_init']['init_kwargs']['class_list'] != [0, 1, 2, 4]:
+        raise ValueError('We currently only support class_list=[0, 1, 2, 4]')
 
     # construct the data object
     data = create_data_object_with_explicit_data_path(flplan=flplan, data_path=data_path)
 
+    # code is written with assumption we are using the gandlf data object
+    if data.__class__.__name__ != 'GANDLFData':
+        raise ValueError('This script is currently assumed to be using fets.data.pytorch.gandlf_data.GANDLFData, you are using: ', data.__class__.__name__)
+
     # construct the model object (requires cpu since we're passing [padded] whole brains)
     model = create_model_object(flplan=flplan, data_object=data, model_device=device)
 
-    proto_path = model_weights_path
-
-    # legacy models are one file, newer ones have a folder that holds per-layer files
-    if legacy_model:
-        tensor_dict_from_proto = load_legacy_model_protobuf(proto_path) 
+    # legacy models are defined in a single file, newer ones have a folder that holds per-layer files
+    if legacy_model_flag:
+        tensor_dict_from_proto = load_legacy_model_protobuf(model_weights_path) 
     else:
-        tensor_dict_from_proto = load_model(proto_path)
+        tensor_dict_from_proto = load_model(model_weights_path)
 
     # restore any tensors held out from the proto
     _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())        
@@ -138,7 +137,7 @@ def main(data_path,
             copy_label_path = os.path.join(output_subdir, label_file)
             shutil.copyfile(label_path, copy_label_path)
         
-        features, _ = subject_to_feature_and_label(subject)
+        features, _ = subject_to_feature_and_label(subject=subject, pad_z=pad_z)
                                     
         output = infer(model, features)
         
@@ -147,8 +146,7 @@ def main(data_path,
         # crop away the padding we put in
         output =  output[:, :, :, :155]
         
-        # the label on disk is transposed from what the gandlf loader produces
-        print("\nWARNING: gandlf loader produces transposed output from what sitk gets from file, so transposing here.\n")
+        # GANDLFData loader produces transposed output from what sitk gets from file, so transposing here.
         output = np.transpose( output, [0, 3, 2, 1])
 
         # process float outputs (accros output channels), providing labels as defined in values of self.class_label_map
@@ -169,8 +167,9 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', '-dp', type=str, required=True, help='Absolute path to the data folder.')
     parser.add_argument('--plan_path', '-pp', type=str, required=True, help='Absolute path to the plan file.')
     parser.add_argument('--model_weights_path', '-mwp', type=str, required=True)
-    parser.add_argument('--output_pardir', '-op', type=str, default='./for_sarthak', required=True)
-    parser.add_argument('--model_output_tag', '-mot', type=str, default='brandon_6', required=True)
+    parser.add_argument('--output_pardir', '-op', type=str, required=True)
+    parser.add_argument('--model_output_tag', '-mot', type=str, default='test_tag')
+    parser.add_argument('--legacy_model_flag', '-lm', action='store_true')
     parser.add_argument('--device', '-dev', type=str, default='cpu', required=False)
     args = parser.parse_args()
     main(**vars(args))
