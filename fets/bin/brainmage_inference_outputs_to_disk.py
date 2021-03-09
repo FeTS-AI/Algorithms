@@ -14,7 +14,7 @@ import SimpleITK as sitk
 
 from openfl import split_tensor_dict_for_holdouts
 from openfl.tensor_transformation_pipelines import NoCompressionPipeline
-from openfl.proto.protoutils import deconstruct_proto, load_proto
+from openfl.proto.protoutils import load_legacy_model_protobuf
 
 
 import torch
@@ -70,21 +70,15 @@ def infer(model, _input):
 #############################################################################
 # Main will require a virtual environment with Algorithms, FeTS, and OpenFL #
 #############################################################################
-def main(data_csv_path, 
-         gandlf_config_path, 
+def main(data_path, 
          model_weights_path, 
          output_pardir, 
          model_output_tag,
-         device):
+         device, 
+         divisibility_factor=16,
+         legacy_model=False):
 
     # we will use the GANDLFData val loader to serve up the samples to perform inference on
-    # will copy the data into the training loader (but not used)
-
-    # These get passed to data constructor
-    data_path = {'train': data_csv_path,
-                 'val': data_csv_path,
-                 'model_params_filepath': gandlf_config_path}
-    divisibility_factor = 16
 
     # construct the data object
     data = GANDLFData(data_path=data_path, divisibility_factor=divisibility_factor)
