@@ -15,8 +15,8 @@ import SimpleITK as sitk
 from openfl import split_tensor_dict_for_holdouts, hash_string
 from openfl.tensor_transformation_pipelines import NoCompressionPipeline
 from openfl.proto.protoutils import load_legacy_model_protobuf, load_proto, tensor_proto_to_numpy_array
-from openfl.proto.collaborator_aggregator_interface_pb2 import TensorProto
-from opennfl.flplan import create_data_object_with_explicit_data_path, parse_fl_plan, create_model_object
+from openfl.proto.collaborator_aggregator_interface_pb2 import TensorProto, ModelHeader, ExtraModelInfo
+from openfl.flplan import create_data_object_with_explicit_data_path, parse_fl_plan, create_model_object
 
 
 import torch
@@ -69,15 +69,15 @@ def infer(model, _input):
         return model(_input.to(torch.device(model.device)))
 
 def load_model(directory):
-    model_header = load_proto(os.path.join(directory, 'ModelHeader.pbuf'), proto_type=ModelHeader)
     extra_model_info = load_proto(os.path.join(directory, 'ExtraModelInfo.pbuf'), proto_type=ExtraModelInfo)
 
     tensor_dict_from_proto = {}
     for t in extra_model_info.tensor_names:
         t_hash = hash_string(t)
         tensor_proto = load_proto(os.path.join(directory, '{}.pbuf'.format(t_hash)), proto_type=TensorProto)
+        print("### loaing tensor: ", t.name)
         if t != tensor_proto.name:
-            raise RuntimeError("Loaded the wrong tensor! Meant to load: {} did load: {} read file: {}".format(t, tensor.name, t_hash))
+            raise RuntimeError("Loaded the wrong tensor! Meant to load: {} did load: {} read file: {}".format(t, t.name, t_hash))
         tensor_dict_from_proto[t] = tensor_proto_to_numpy_array(tensor_proto)
 
     return tensor_dict_from_proto
@@ -92,7 +92,6 @@ def main(data_path,
          output_pardir, 
          model_output_tag,
          device, 
-         divisibility_factor=16,
          legacy_model=False):
 
     flplan = parse_fl_plan(plan_path)
@@ -100,10 +99,10 @@ def main(data_path,
     # check that we are using the gandlf data object
 
     # construct the data object
-    data = create_data_object_with_explicit_data_path(flplan=flplan, data_path=data_dir, inference_patient=inference_patient)
+    data = create_data_object_with_explicit_data_path(flplan=flplan, data_path=data_path)
 
     # construct the model object (requires cpu since we're passing [padded] whole brains)
-    model = create_model_object(flplan=flplan, data=data, model_device=device)
+    model = create_model_object(flplan=flplan, data_object=data, model_device=device)
 
     proto_path = model_weights_path
 
@@ -118,7 +117,7 @@ def main(data_path,
     tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
     model.set_tensor_dict(tensor_dict, with_opt_vars=False) 
 
-    print("\nWill be running inference on {} samples.\n".format(model.get_validation_data_size()))
+    print("\nWill be running inference on {} validation samples.\n".format(model.get_validation_data_size()))
 
     if not os.path.exists(output_pardir):
         os.mkdir(output_pardir)
@@ -140,7 +139,7 @@ def main(data_path,
             copy_label_path = os.path.join(output_subdir, label_file)
             shutil.copyfile(label_path, copy_label_path)
         
-        features, labels = subject_to_feature_and_label(subject)
+        features, _ = subject_to_feature_and_label(subject)
                                     
         output = infer(model, features)
         
