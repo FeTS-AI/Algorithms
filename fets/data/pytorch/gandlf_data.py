@@ -335,8 +335,8 @@ class GANDLFData(object):
         self.sanity_check_split_info()
         # get split from csvs and pickle (above check confirms they exist if split instance does)
         if not os.path.exists(self.split_instance_dirpath):
-            csv_train = []
-            csv_val = []
+            subdirs_only_csv_train = []
+            subdirs_only_csv_val = []
             pickled_train = []
             pickled_val = []
         else:
@@ -352,15 +352,15 @@ class GANDLFData(object):
             raise ValueError('Train csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
         if subdirs_only_csv_val != pickled_val:
             raise ValueError('Validation csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
-        return subdirs_only_csv_train, subdirs_only_csv_val
+        return sorted(subdirs_only_csv_train), sorted(subdirs_only_csv_val)
 
     def get_past_data(self):
         split_train, split_val = self.get_split_info()
-        last_lost_train, last_lost_val = self.get_last_lost_data()
+        lost_train, lost_val = self.get_lost_data()
         
         # combine old split with lost data
-        past_train = set(split_train).union(set(last_lost_train))
-        past_val = set(split_val).union(set(last_lost_val))
+        past_train = set(split_train).union(set(lost_train))
+        past_val = set(split_val).union(set(lost_val))
 
         # sanity check
         if past_train.intersection(past_val) != set():
@@ -389,18 +389,18 @@ class GANDLFData(object):
 
         return lost_train, lost_val           
 
-    def get_last_lost_data(self):
+    def get_lost_data(self):
         self.sanity_check_split_info()
         # get lost data info from pickle (above check confirms either both lost data files or neither exists)
         lost_train = load_pickle(self.pickled_lost_train_path) or []
         lost_val = load_pickle(self.pickled_lost_val_path) or []
 
-        return set(lost_train), set(lost_val)
+        return sorted(lost_train), sorted(lost_val)
 
     def record_split_info(self, train, val):
 
-        train = np.sort(train)
-        val = np.sort(val)
+        train = sorted(train)
+        val = sorted(val)
         print('\n Data split information:')
         print('\n{} good data subdirectories were found in {}'.format(self.num_on_disk, self.data_path))
         if self.num_train_historical_assignments + self.num_val_historical_assignments != 0:
@@ -423,18 +423,18 @@ class GANDLFData(object):
         if self.allow_previously_unseen_data and (self.num_val_fresh_assignments != 0):
             print('{} newly assigned.\n'.format(self.num_val_fresh_assignments))
 
-        write_out = False
-        previous_split = True
-
         if not os.path.exists(self.split_instance_dirpath):
             os.mkdir(self.split_instance_dirpath)
             previous_split = False
+        else:
+            previous_split = True
 
-        # we only want to record the split info if something has changed from the previous split info
+        # the only case that we do not write out is when previous split exists and matches current split
+        write_out = True
         if previous_split:
             prev_train, prev_val = self.get_split_info()
-            if (prev_train != train) or (prev_val != val):
-                write_out = True
+            if (prev_train == train) and (prev_val == val):
+                write_out = False
 
         if write_out:
             dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
@@ -444,8 +444,8 @@ class GANDLFData(object):
             dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
     
     def record_lost_data(self, lost_train, lost_val):
-        lost_train = np.sort(lost_train)
-        lost_val = np.sort(lost_val)
+        lost_train = sorted(lost_train)
+        lost_val = sorted(lost_val)
 
         lists_empty = (len(lost_train) + len(lost_val) == 0)  
         self.sanity_check_split_info()
@@ -466,10 +466,10 @@ class GANDLFData(object):
             if not old_lost_info_present:
                 # here the lists are not empty and we have no previously recorded lost data
                 write_out = True
-            else:
+            else: 
                 # here previous lost info is present, and so we can compare previous with current
-                previous_lost_train, previous_lost_val = self.get_last_lost_data()
-                if (np.sort(list(previous_lost_train)) != lost_train) or (np.sort(list(previous_lost_val)) != lost_val):
+                previous_lost_train, previous_lost_val = self.get_lost_data()
+                if (previous_lost_train != lost_train) or (previous_lost_val != lost_val):
                     write_out=True
 
             if write_out:
