@@ -456,10 +456,7 @@ class GANDLFData(object):
         if (not lists_empty) or old_lost_info_present:
             print('\nLost data info:')
             print('Subdirectories: {} were previously used for training but now missing in {}'.format(lost_train, self.data_path))
-            print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path))
-                    
-            if not os.path.exists(self.split_instance_dirpath):
-                os.mkdir(self.split_instance_dirpath) 
+            print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path)) 
 
             write_out = False
 
@@ -473,6 +470,8 @@ class GANDLFData(object):
                     write_out=True
 
             if write_out:
+                if not os.path.exists(self.split_instance_dirpath):
+                    os.mkdir(self.split_instance_dirpath)
                 dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
                 dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
 
