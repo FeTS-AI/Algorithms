@@ -161,7 +161,8 @@ def main(data_path,
         # get the DICE score
         dice_dict = clinical_dice(output=output, 
                                   target=one_hot(segmask_array=ground_truth, class_list=class_list), 
-                                  class_list=class_list)
+                                  class_list=class_list, 
+                                  to_scalar=True)
 
         output = np.squeeze(output.cpu().numpy())
 
@@ -180,7 +181,8 @@ def main(data_path,
 
         print("\nWriting inference NIfTI image of shape {} to {}".format(output.shape, outpath))
         sitk.WriteImage(image, outpath)
-        print("\nCorresponding DICE score was: {}\n\n".format(dice_dict))
+        print("\nCorresponding DICE scores were: ")
+        print("{}\n\n".format(dice_dict))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
