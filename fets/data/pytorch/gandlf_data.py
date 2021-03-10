@@ -342,17 +342,17 @@ class GANDLFData(object):
         else:
             csv_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path))
             csv_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path))
-            csv_train = list(csv_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-            csv_val = list(csv_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+            subdirs_only_csv_train = list(csv_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+            subdirs_only_csv_val = list(csv_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
 
             pickled_train, pickled_val = load_pickle(self.pickled_split_path)
             
         # check for consistency
-        if csv_train != pickled_train:
+        if subdirs_only_csv_train != pickled_train:
             raise ValueError('Train csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
-        if csv_val != pickled_val:
+        if subdirs_only_csv_val != pickled_val:
             raise ValueError('Validation csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
-        return csv_train, csv_val
+        return subdirs_only_csv_train, subdirs_only_csv_val
 
     def get_past_data(self):
         split_train, split_val = self.get_split_info()
@@ -423,13 +423,25 @@ class GANDLFData(object):
         if self.allow_previously_unseen_data and (self.num_val_fresh_assignments != 0):
             print('{} newly assigned.\n'.format(self.num_val_fresh_assignments))
 
+        # determines whether or not to write out the split info
+        write_out = False
+
         if not os.path.exists(self.split_instance_dirpath):
-            os.mkdir(self.split_instance_dirpath)   
-        dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
-        temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
-                                                                                    val_subdirs=val)
-        dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
-        dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
+            os.mkdir(self.split_instance_dirpath)
+            previous_split = False
+
+        # we only want to record the split info if something has changed from the previous split info
+        if previous_split:
+            prev_train, prev_val = self.get_split_info()
+            if (prev_train != train) or (prev_val != val):
+                write_out = True
+
+        if write_out:
+            dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
+            temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
+                                                                                        val_subdirs=val)
+            dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
+            dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
     
     def record_lost_data(self, lost_train, lost_val):
         lost_train = np.sort(lost_train)
@@ -445,10 +457,25 @@ class GANDLFData(object):
             print('\nLost data info:')
             print('Subdirectories: {} were previously used for training but now missing in {}'.format(lost_train, self.data_path))
             print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path))
+                    
             if not os.path.exists(self.split_instance_dirpath):
-                os.mkdir(self.split_instance_dirpath)  
-            dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
-            dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
+                os.mkdir(self.split_instance_dirpath) 
+
+            # determines whether or not to write out the lost data info
+            write_out = False
+
+            if not old_lost_info_present:
+                # here the lists are not empty and we have no previously recorded lost data
+                write_out = True
+            else:
+                # here previous lost info is present, and so we can get it (note they come as sets) and compare
+                previous_lost_train, previous_lost_val = self.get_last_lost_data()
+                if (np.sort(list(previous_lost_train)) != lost_train) or (np.sort(list(previous_lost_val)) != lost_val):
+                    write_out=True
+
+            if write_out:
+                dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
+                dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
 
     def check_for_undesirable_split(self, train, val):
 
