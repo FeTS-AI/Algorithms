@@ -423,8 +423,8 @@ class GANDLFData(object):
         if self.allow_previously_unseen_data and (self.num_val_fresh_assignments != 0):
             print('{} newly assigned.\n'.format(self.num_val_fresh_assignments))
 
-        # determines whether or not to write out the split info
         write_out = False
+        previous_split = True
 
         if not os.path.exists(self.split_instance_dirpath):
             os.mkdir(self.split_instance_dirpath)
