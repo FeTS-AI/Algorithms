@@ -335,32 +335,32 @@ class GANDLFData(object):
         self.sanity_check_split_info()
         # get split from csvs and pickle (above check confirms they exist if split instance does)
         if not os.path.exists(self.split_instance_dirpath):
-            csv_train = []
-            csv_val = []
+            subdirs_only_csv_train = []
+            subdirs_only_csv_val = []
             pickled_train = []
             pickled_val = []
         else:
             csv_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path))
             csv_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path))
-            csv_train = list(csv_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-            csv_val = list(csv_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+            subdirs_only_csv_train = list(csv_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
+            subdirs_only_csv_val = list(csv_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
 
             pickled_train, pickled_val = load_pickle(self.pickled_split_path)
             
         # check for consistency
-        if csv_train != pickled_train:
+        if subdirs_only_csv_train != pickled_train:
             raise ValueError('Train csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
-        if csv_val != pickled_val:
+        if subdirs_only_csv_val != pickled_val:
             raise ValueError('Validation csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
-        return csv_train, csv_val
+        return sorted(subdirs_only_csv_train), sorted(subdirs_only_csv_val)
 
     def get_past_data(self):
         split_train, split_val = self.get_split_info()
-        last_lost_train, last_lost_val = self.get_last_lost_data()
+        lost_train, lost_val = self.get_lost_data()
         
         # combine old split with lost data
-        past_train = set(split_train).union(set(last_lost_train))
-        past_val = set(split_val).union(set(last_lost_val))
+        past_train = set(split_train).union(set(lost_train))
+        past_val = set(split_val).union(set(lost_val))
 
         # sanity check
         if past_train.intersection(past_val) != set():
@@ -389,18 +389,18 @@ class GANDLFData(object):
 
         return lost_train, lost_val           
 
-    def get_last_lost_data(self):
+    def get_lost_data(self):
         self.sanity_check_split_info()
         # get lost data info from pickle (above check confirms either both lost data files or neither exists)
         lost_train = load_pickle(self.pickled_lost_train_path) or []
         lost_val = load_pickle(self.pickled_lost_val_path) or []
 
-        return set(lost_train), set(lost_val)
+        return sorted(lost_train), sorted(lost_val)
 
     def record_split_info(self, train, val):
 
-        train = np.sort(train)
-        val = np.sort(val)
+        train = sorted(train)
+        val = sorted(val)
         print('\n Data split information:')
         print('\n{} good data subdirectories were found in {}'.format(self.num_on_disk, self.data_path))
         if self.num_train_historical_assignments + self.num_val_historical_assignments != 0:
@@ -424,16 +424,29 @@ class GANDLFData(object):
             print('{} newly assigned.\n'.format(self.num_val_fresh_assignments))
 
         if not os.path.exists(self.split_instance_dirpath):
-            os.mkdir(self.split_instance_dirpath)   
-        dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
-        temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
-                                                                                    val_subdirs=val)
-        dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
-        dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
+            previous_split = False
+        else:
+            previous_split = True
+
+        # the only case that we do not write out is when previous split exists and matches current split
+        write_out = True
+        if previous_split:
+            prev_train, prev_val = self.get_split_info()
+            if (prev_train == train) and (prev_val == val):
+                write_out = False
+
+        if write_out:
+            if not os.path.exists(self.split_instance_dirpath):
+                os.mkdir(self.split_instance_dirpath)
+            dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
+            temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
+                                                                                        val_subdirs=val)
+            dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
+            dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
     
     def record_lost_data(self, lost_train, lost_val):
-        lost_train = np.sort(lost_train)
-        lost_val = np.sort(lost_val)
+        lost_train = sorted(lost_train)
+        lost_val = sorted(lost_val)
 
         lists_empty = (len(lost_train) + len(lost_val) == 0)  
         self.sanity_check_split_info()
@@ -444,11 +457,24 @@ class GANDLFData(object):
         if (not lists_empty) or old_lost_info_present:
             print('\nLost data info:')
             print('Subdirectories: {} were previously used for training but now missing in {}'.format(lost_train, self.data_path))
-            print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path))
-            if not os.path.exists(self.split_instance_dirpath):
-                os.mkdir(self.split_instance_dirpath)  
-            dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
-            dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
+            print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path)) 
+
+            write_out = False
+
+            if not old_lost_info_present:
+                # here the lists are not empty and we have no previously recorded lost data
+                write_out = True
+            else: 
+                # here previous lost info is present, and so we can compare previous with current
+                previous_lost_train, previous_lost_val = self.get_lost_data()
+                if (previous_lost_train != lost_train) or (previous_lost_val != lost_val):
+                    write_out=True
+
+            if write_out:
+                if not os.path.exists(self.split_instance_dirpath):
+                    os.mkdir(self.split_instance_dirpath)
+                dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
+                dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
 
     def check_for_undesirable_split(self, train, val):
 
