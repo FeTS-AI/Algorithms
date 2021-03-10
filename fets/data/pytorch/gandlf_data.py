@@ -424,7 +424,6 @@ class GANDLFData(object):
             print('{} newly assigned.\n'.format(self.num_val_fresh_assignments))
 
         if not os.path.exists(self.split_instance_dirpath):
-            os.mkdir(self.split_instance_dirpath)
             previous_split = False
         else:
             previous_split = True
@@ -437,6 +436,8 @@ class GANDLFData(object):
                 write_out = False
 
         if write_out:
+            if not os.path.exists(self.split_instance_dirpath):
+                os.mkdir(self.split_instance_dirpath)
             dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
             temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
                                                                                         val_subdirs=val)
