@@ -461,14 +461,13 @@ class GANDLFData(object):
             if not os.path.exists(self.split_instance_dirpath):
                 os.mkdir(self.split_instance_dirpath) 
 
-            # determines whether or not to write out the lost data info
             write_out = False
 
             if not old_lost_info_present:
                 # here the lists are not empty and we have no previously recorded lost data
                 write_out = True
             else:
-                # here previous lost info is present, and so we can get it (note they come as sets) and compare
+                # here previous lost info is present, and so we can compare previous with current
                 previous_lost_train, previous_lost_val = self.get_last_lost_data()
                 if (np.sort(list(previous_lost_train)) != lost_train) or (np.sort(list(previous_lost_val)) != lost_val):
                     write_out=True
