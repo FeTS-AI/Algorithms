@@ -13,6 +13,11 @@ from openfl.proto.collaborator_aggregator_interface_pb2 import TensorProto, Extr
 from openfl.flplan import create_data_object_with_explicit_data_path, parse_fl_plan, create_model_object
 
 from fets.data.pytorch import new_labels_from_float_output
+from fets.data.pytorch.gandlf_data import GANDLFData
+from fets.models.pytorch.brainmage import BrainMaGeModel
+from fets.models.pytorch.brainmage.losses import clinical_dice
+
+from GANDLF.utils import one_hot
 
 
 ################################################################
@@ -21,6 +26,7 @@ from fets.data.pytorch import new_labels_from_float_output
 
 # Note the dependency on converting outputs back to class labels (we check for this to be consistent with plan used)
 class_label_map = {0:0, 1:1, 2:2, 4:4}
+class_list = list(np.sort(list(class_label_map.values())))
 # data has shape 240, 240, 155, we need to pad the z axis in  order to reach divisibility by 16 in all dimensions
 pad_z = 5
 
@@ -90,19 +96,23 @@ def main(data_path,
 
     flplan = parse_fl_plan(plan_path)
 
-    # this code currently only supports class_list=[0, 1, 2, 4] (note hard coded class_label_map above)
-    if flplan['data_object_init']['init_kwargs']['class_list'] != [0, 1, 2, 4]:
-        raise ValueError('We currently only support class_list=[0, 1, 2, 4]')
+    # make sure the class list we are using is compatible with the hard-coded class_label_map above
+    if flplan['data_object_init']['init_kwargs']['class_list'] != class_list:
+        raise ValueError('We currently only support class_list=', class_list)
 
     # construct the data object
     data = create_data_object_with_explicit_data_path(flplan=flplan, data_path=data_path)
 
     # code is written with assumption we are using the gandlf data object
-    if data.__class__.__name__ != 'GANDLFData':
-        raise ValueError('This script is currently assumed to be using fets.data.pytorch.gandlf_data.GANDLFData, you are using: ', data.__class__.__name__)
+    if not issubclass(data.__class__, GANDLFData):
+        raise ValueError('This script is currently assumed to be using a child of fets.data.pytorch.gandlf_data.GANDLFData, you are using: ', data.__class__.__name__)
 
     # construct the model object (requires cpu since we're passing [padded] whole brains)
     model = create_model_object(flplan=flplan, data_object=data, model_device=device)
+
+    # code is written with assumption we are using the brainmage object
+    if not issubclass(model.__class__, BrainMaGeModel):
+        raise ValueError('This script is currently assumed to be using a child of fets.models.pytorch.brainmage.BrainMaGeModel, you are using: ', data.__class__.__name__)
 
     # legacy models are defined in a single file, newer ones have a folder that holds per-layer files
     if legacy_model_flag:
@@ -136,16 +146,25 @@ def main(data_path,
             # copy the label file over to the output subdir
             copy_label_path = os.path.join(output_subdir, label_file)
             shutil.copyfile(label_path, copy_label_path)
+
+
         
-        features, _ = subject_to_feature_and_label(subject=subject, pad_z=pad_z)
+        features, ground_truth = subject_to_feature_and_label(subject=subject, pad_z=pad_z)
                                     
         output = infer(model, features)
         
-        output = np.squeeze(output.cpu().numpy())
-        
         # crop away the padding we put in
         output =  output[:, :, :, :155]
-        
+
+        print(one_hot(segmask_array=ground_truth, class_list=class_list).shape, output.shape)
+
+        # get the DICE score
+        dice_dict = clinical_dice(output=output, 
+                                  target=one_hot(segmask_array=ground_truth, class_list=class_list), 
+                                  class_list=class_list)
+
+        output = np.squeeze(output.cpu().numpy())
+
         # GANDLFData loader produces transposed output from what sitk gets from file, so transposing here.
         output = np.transpose( output, [0, 3, 2, 1])
 
@@ -153,14 +172,15 @@ def main(data_path,
         output = new_labels_from_float_output(array=output,
                                               class_label_map=class_label_map, 
                                               binary_classification=False)
-
+        
         # convert array to SimpleITK image 
         image = sitk.GetImageFromArray(output)
 
         image.CopyInformation(sitk.ReadImage(first_mode_path))
 
-        print("\nWriting inference NIfTI image of shape {} to {}\n".format(output.shape, outpath))
+        print("\nWriting inference NIfTI image of shape {} to {}".format(output.shape, outpath))
         sitk.WriteImage(image, outpath)
+        print("\nCorresponding DICE score was: {}\n\n".format(dice_dict))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
