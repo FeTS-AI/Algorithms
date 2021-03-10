@@ -50,9 +50,8 @@ def subject_to_feature_and_label(subject, pad_z):
         features_pad = torch.zeros(1, 4, 240, 240, pad_z)
         features = torch.cat([features, features_pad], dim=4)
 
-        if label is not None:
-            label_pad = torch.zeros(1, 1, 240, 240, pad_z)
-            label = torch.cat([label, label_pad], dim=4)
+        # we pad only the features, not the label
+        # the output = model(features) will be cropped to restore its shape
         
     print("Constructed features from subject with shape", features.shape)
     if label is not None:
@@ -152,9 +151,10 @@ def main(data_path,
         features, ground_truth = subject_to_feature_and_label(subject=subject, pad_z=pad_z)
                                     
         output = infer(model, features)
-        
+
+        # FIXME: Find a better solution
         # crop away the padding we put in
-        output =  output[:, :, :, :155]
+        output =  output[:, :, :, :, :155]
 
         print(one_hot(segmask_array=ground_truth, class_list=class_list).shape, output.shape)
 
