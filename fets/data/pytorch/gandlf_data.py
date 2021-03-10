@@ -109,7 +109,7 @@ class GANDLFData(object):
                  data_usage='train-val',
                  shuffle_before_train_val_split=True,
                  allow_new_data_into_previous_split = True,
-                 handle_data_loss_from_previous_split= True,
+                 handle_data_loss_from_previous_split= False,
                  **kwargs):
 
         # some hard-coded atributes
