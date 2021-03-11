@@ -271,7 +271,7 @@ class GANDLFData(object):
 
         self.check_for_undesirable_split(train=train, val=val)
 
-        # writing out lost data and split info (find out if newly lost samples were found) 
+        # writing out lost data and split info (find out if newly lost samples were found)
         newly_lost_train, newly_lost_val = self.record_lost_data(lost_train=list(lost_train), lost_val=list(lost_val))
         self.record_split_info(train=train, val=val)
 
@@ -479,6 +479,9 @@ class GANDLFData(object):
         
         # sanity check above ensures either one or both of lost data files are present
         old_lost_info_present = os.path.exists(self.pickled_lost_train_path)
+
+        newly_lost_train = []
+        newly_lost_val = []
         
         if (not lists_empty) or old_lost_info_present:
             print('\nLost data info:')
@@ -486,9 +489,7 @@ class GANDLFData(object):
             print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path)) 
 
             write_out = False
-            newly_lost_train = []
-            newly_lost_val = []
-
+            
             if not old_lost_info_present:
                 # here at least one list is not empty and we have no previously recorded lost data
                 write_out = True
@@ -508,7 +509,7 @@ class GANDLFData(object):
                 dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
                 dump_pickle(list(lost_val), path=self.pickled_lost_val_path)
 
-            return newly_lost_train, newly_lost_val 
+        return newly_lost_train, newly_lost_val 
 
     def check_for_undesirable_split(self, train, val):
 
