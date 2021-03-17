@@ -276,7 +276,7 @@ class GANDLFData(object):
         self.record_split_info(train=train, val=val)
 
         if (newly_lost_train != [] or newly_lost_val != []) and self.force_rerun_with_recent_data_loss:
-            raise ValueError('Subdirectories train: {}, val: {} are newly missing, and force_rerun_with_recent_data_loss is True. Put these directories back into {} and re-run, or re-run without them.')
+            raise ValueError('Subdirectories train: {}, val: {} are newly missing, and force_rerun_with_recent_data_loss is True. Put these directories back into {} and re-run, or re-run without them.'.format(newly_lost_train, newly_lost_val, self.data_path))
         
         # constructing dataframes, then loaders from the dataframes
         train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val)     
@@ -501,7 +501,7 @@ class GANDLFData(object):
                 if (previous_lost_train != lost_train) or (previous_lost_val != lost_val):
                     write_out=True
                     newly_lost_train = sorted(list(set(lost_train) - set(previous_lost_train)))
-                    newly_lost_val = sorted(list(set(lost_val) - set(previous_lost_val) != set()))
+                    newly_lost_val = sorted(list(set(lost_val) - set(previous_lost_val)))
 
             if write_out:
                 if not os.path.exists(self.split_instance_dirpath):
