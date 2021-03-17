@@ -404,11 +404,11 @@ class GANDLFData(object):
             if lost_train != set([]):
                 print('\nWARNING: Train samples: {} from split: {} now missing on disk.\n'.format(list(lost_train), self.split_instance_dirname))
                 if not self.handle_data_loss_from_previous_split:
-                    raise ValueError('Train samples: {} from split: {} now missing on disk and allow_data_loss is False.'.format(list(lost_train), self.split_instance_dirname))
+                    raise ValueError('Train samples: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(list(lost_train), self.split_instance_dirname))
             if lost_val != set([]):
                 print('\nWARNING: Val samples: {} from split: {} now missing on disk.\n'.format(list(lost_val), self.split_instance_dirname))
                 if not self.handle_data_loss_from_previous_split:
-                    raise ValueError('Val samples: {} from split: {} now missing on disk and allow_data_loss is False.'.format(list(lost_val), self.split_instance_dirname))
+                    raise ValueError('Val samples: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(list(lost_val), self.split_instance_dirname))
 
         return lost_train, lost_val           
 
