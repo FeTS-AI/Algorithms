@@ -109,7 +109,8 @@ class GANDLFData(object):
                  data_usage='train-val',
                  shuffle_before_train_val_split=True,
                  allow_new_data_into_previous_split = True,
-                 handle_data_loss_from_previous_split= False,
+                 handle_data_loss_from_previous_split= True,
+                 force_rerun_with_recent_data_loss = True,
                  **kwargs):
 
         # some hard-coded atributes
@@ -169,10 +170,19 @@ class GANDLFData(object):
         self.train_augmentations = data_augmentation
 
         self.preprocessing = data_preprocessing
+
+        # sudirectories to skip when listing patient subdirectories inside data directory
+        self.excluded_subdirs = excluded_subdirs
+        
+        #################################################################
+        # The following attributes apply only to data-usage='train-val' #
+        #################################################################
+        
         self.split_instance_dirname = split_instance_dirname
+        
         self.shuffle_before_train_val_split = shuffle_before_train_val_split
         self.random_generator_instance = np.random.default_rng(np_split_seed)
-
+        
         self.percent_train = percent_train
         # sanity check
         if (self.percent_train <= 0.0) or (self.percent_train >= 1.0):
@@ -180,18 +190,28 @@ class GANDLFData(object):
 
         # do we allow new data into training and validation (when some train and val was previously assigned)
         self.allow_new_data_into_previous_split = allow_new_data_into_previous_split
-        # do we throw exceptions for missing disk data previously recorded as train or val samples,
+
+        # do we throw exceptions for missing disk data previously recorded as train or val samples
+        # (not recording the new split and missing data info),
         # or record information in a file and do our best to restore percent_train with new samples
         self.handle_data_loss_from_previous_split = handle_data_loss_from_previous_split
+
+        # in the case handle_data_loss_from_previous_split is True and we encounter new missing data, 
+        # do we go ahead and record the new split and missing data info, but throw an exception immediately after?
+        # (will then provide an alert in the exception message, but a subsequent rerun will avoid the
+        # exception as the missing data will not be new anymore)
+        self.force_rerun_with_recent_data_loss = force_rerun_with_recent_data_loss
 
         # do we throw exceptions for data subdirectories with missing files, or just skip them
         self.handle_missing_datafiles = handle_missing_datafiles
 
         # hard-coded file name
         self.split_info_dirname = 'split_info'
+
+        #############################################################
+        # The above attributes apply only to data-usage='train-val' #
+        #############################################################
         
-        # sudirectories to skip when listing patient subdirectories inside data directory
-        self.excluded_subdirs = excluded_subdirs
         # append the split info directory
         self.excluded_subdirs.append(self.split_info_dirname)
         
@@ -251,9 +271,12 @@ class GANDLFData(object):
 
         self.check_for_undesirable_split(train=train, val=val)
 
-        # writing out lost data and split info 
-        self.record_lost_data(lost_train=list(lost_train), lost_val=list(lost_val))
+        # writing out lost data and split info (find out if newly lost samples were found)
+        newly_lost_train, newly_lost_val = self.record_lost_data(lost_train=list(lost_train), lost_val=list(lost_val))
         self.record_split_info(train=train, val=val)
+
+        if (newly_lost_train != [] or newly_lost_val != []) and self.force_rerun_with_recent_data_loss:
+            raise ValueError('Subdirectories train: {}, val: {} are newly missing, and force_rerun_with_recent_data_loss is True. Put these directories back into {} and re-run, or re-run without them.')
         
         # constructing dataframes, then loaders from the dataframes
         train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val)     
@@ -445,6 +468,9 @@ class GANDLFData(object):
             dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
     
     def record_lost_data(self, lost_train, lost_val):
+        # write lost data info to disk if this information is different from previously recorded. 
+        # Also return any lost samples, newly detected on this run.
+
         lost_train = sorted(lost_train)
         lost_val = sorted(lost_val)
 
@@ -453,6 +479,9 @@ class GANDLFData(object):
         
         # sanity check above ensures either one or both of lost data files are present
         old_lost_info_present = os.path.exists(self.pickled_lost_train_path)
+
+        newly_lost_train = []
+        newly_lost_val = []
         
         if (not lists_empty) or old_lost_info_present:
             print('\nLost data info:')
@@ -460,21 +489,27 @@ class GANDLFData(object):
             print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path)) 
 
             write_out = False
-
+            
             if not old_lost_info_present:
-                # here the lists are not empty and we have no previously recorded lost data
+                # here at least one list is not empty and we have no previously recorded lost data
                 write_out = True
+                newly_lost_train = lost_train
+                newly_lost_val = lost_val
             else: 
                 # here previous lost info is present, and so we can compare previous with current
                 previous_lost_train, previous_lost_val = self.get_lost_data()
                 if (previous_lost_train != lost_train) or (previous_lost_val != lost_val):
                     write_out=True
+                    newly_lost_train = sorted(list(set(lost_train) - set(previous_lost_train)))
+                    newly_lost_val = sorted(list(set(lost_val) - set(previous_lost_val) != set()))
 
             if write_out:
                 if not os.path.exists(self.split_instance_dirpath):
                     os.mkdir(self.split_instance_dirpath)
                 dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
-                dump_pickle(list(lost_val), path=self.pickled_lost_val_path) 
+                dump_pickle(list(lost_val), path=self.pickled_lost_val_path)
+
+        return newly_lost_train, newly_lost_val 
 
     def check_for_undesirable_split(self, train, val):
 
