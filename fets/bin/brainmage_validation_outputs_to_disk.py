@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 import numpy as np
+import pickle as pkl
 
 import SimpleITK as sitk
 import torch
@@ -129,22 +130,31 @@ def main(data_path,
     if not os.path.exists(output_pardir):
         os.mkdir(output_pardir)
 
+    subdir_to_DICE = {}
+    dice_outpath = None
+
     for subject in data.get_val_loader():
         first_mode_path = subject['1']['path'][0] # using this because this is only one that's always defined
         subfolder = first_mode_path.split('/')[-2]
         
-        #prep the path for the output file
+        #prep the path for the output files
         output_subdir = os.path.join(output_pardir, subfolder)
         if not os.path.exists(output_subdir):
             os.mkdir(output_subdir)
-        outpath = os.path.join(output_subdir, subfolder + model_output_tag + '_seg.nii.gz')
+        inference_outpath = os.path.join(output_subdir, subfolder + model_output_tag + '_seg.nii.gz')
+        if dice_outpath == None:
+            dice_outpath = os.path.join(output_pardir, model_output_tag + '_subdirs_to_DICE.pkl')
+
+        if not is_mask_present(subject):
+            raise ValueError('We are expecting to run this on subjects that have labels.')
+
+        label_path = subject['label']['path'][0]
+        label_file = label_path.split('/')[-1]
+        subdir_name = label_path.split('/')[-2]
         
-        if is_mask_present(subject):
-            label_path = subject['label']['path'][0]
-            label_file = label_path.split('/')[-1]
-            # copy the label file over to the output subdir
-            copy_label_path = os.path.join(output_subdir, label_file)
-            shutil.copyfile(label_path, copy_label_path)
+        # copy the label file over to the output subdir
+        copy_label_path = os.path.join(output_subdir, label_file)
+        shutil.copyfile(label_path, copy_label_path)
 
 
         
@@ -164,6 +174,8 @@ def main(data_path,
                                   class_list=class_list, 
                                   to_scalar=True)
 
+        subdir_to_DICE[subdir_name] = dice_dict
+
         output = np.squeeze(output.cpu().numpy())
 
         # GANDLFData loader produces transposed output from what sitk gets from file, so transposing here.
@@ -179,10 +191,14 @@ def main(data_path,
 
         image.CopyInformation(sitk.ReadImage(first_mode_path))
 
-        print("\nWriting inference NIfTI image of shape {} to {}".format(output.shape, outpath))
-        sitk.WriteImage(image, outpath)
+        print("\nWriting inference NIfTI image of shape {} to {}".format(output.shape, inference_outpath))
+        sitk.WriteImage(image, inference_outpath)
         print("\nCorresponding DICE scores were: ")
         print("{}\n\n".format(dice_dict))
+
+    print("Saving subdir_name_to_DICE at: ", dice_outpath)
+    with open(dice_outpath, 'wb') as _file:
+        pkl.dump(subdir_to_DICE, _file)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
