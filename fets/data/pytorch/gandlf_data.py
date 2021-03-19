@@ -89,7 +89,7 @@ def set_to_sorted_list(_set):
 def fpaths_to_uid(fpaths):
     # TODO: More integrity checks here 
     #       For now simply getting parent directory of the T1 file.
-    return 'CRAZY_TOWN_' + os.path.split(os.path.split(fpaths['T1'])[0])[1]
+    return os.path.split(os.path.split(fpaths['T1'])[0])[1]
 
 
 class GANDLFData(object):
