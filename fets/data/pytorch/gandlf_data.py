@@ -14,7 +14,6 @@ from torch.utils.data import DataLoader
 
 # put GANDLF in as a submodule staat pip install
 from GANDLF.data.ImagesFromDataFrame import ImagesFromDataFrame
-from GANDLF.parseConfig import parseConfig
 
 from fets.data.gandlf_utils import get_dataframe_and_headers
 from fets.data import get_appropriate_file_paths_from_subject_dir
