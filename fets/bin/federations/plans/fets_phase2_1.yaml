@@ -24,8 +24,7 @@ model_object_init:
     opt: adam
     use_penalties: False
     validate_with_fine_grained_dice: True
-    final_layer_activation: 'sigmoid'
-
+    
 collaborator_object_init:
   init_kwargs:
     polling_interval  : 4

@@ -31,8 +31,20 @@ and some other hyperparameters, which remain constant all the modules. For more 
 """
 
 class PyTorch3DResUNet(BrainMaGeModel):
-    def __init__(self, final_layer_activation='softmax', **kwargs):
+    def __init__(self, final_layer_activation=None, **kwargs):
         super(PyTorch3DResUNet, self).__init__(**kwargs)
+
+        if final_layer_activation is None:
+            # inferring from data object class_list attribute
+            if (data.class_list == [0, 1]) or (data.class_list == ['4', '1||2||4', '1||4']):
+                # single output channel or multi-label
+                final_layer_activation = 'sigmoid'
+            elif data.class_list == [0, 1, 2, 4]:
+                # mutually exclusive labels
+                final_layer_activation = 'softmax'
+            else:
+                raise ValueError('No final_layer_activation provided and not able to infer the value needed.')      
+
         self.init_network(device=self.device, final_layer_activation=final_layer_activation)
         self.init_optimizer()
         

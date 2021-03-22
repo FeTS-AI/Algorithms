@@ -130,9 +130,10 @@ class BrainMaGeModel(PyTorchFLModel):
         self.which_loss = loss_function
         self.opt = opt
         # model parameters
-        self.binary_classification = self.n_classes == 2
-        if self.binary_classification:
+        if self.n_classes == 2:
             self.label_channels = 1
+            # FIXME: Support binary classification
+            raise NotImplementedError('Model output handling not currently supported in this case.')
         else:
             self.label_channels = self.n_classes
         self.base_filters = base_filters
@@ -427,6 +428,7 @@ class BrainMaGeModel(PyTorchFLModel):
             if output.shape != mask.shape:
                 raise ValueError('Model output and ground truth mask are not the same shape.')
 
+            # FIXME: Restore the ability to handle binary classification (one channel output)
             # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
             current_dice = clinical_dice(output=output.float(), 
                                          target=mask.float(), 
