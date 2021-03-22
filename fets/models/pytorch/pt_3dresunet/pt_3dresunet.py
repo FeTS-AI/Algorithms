@@ -68,7 +68,6 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.us_0 = UpsamplingModule(self.base_filters*2, self.base_filters)
         self.out = out_conv(self.base_filters*2, 
                             self.label_channels, 
-                            self.binary_classification, 
                             res=True, 
                             activation=final_layer_activation)
 
