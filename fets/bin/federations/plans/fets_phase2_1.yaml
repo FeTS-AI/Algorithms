@@ -38,7 +38,7 @@ network_object_init:
  
 data_object_init:
   class_to_init: fets.data.pytorch.gandlf_data.GANDLFData
-  data_name_in_local_config: fets_phase1
+  data_name_in_local_config: fets_phase2
   init_kwargs: 
     divisibility_factor: 16
     data_usage: 'train-val'
