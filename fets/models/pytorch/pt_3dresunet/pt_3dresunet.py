@@ -58,7 +58,7 @@ class PyTorch3DResUNet(BrainMaGeModel):
                             self.label_channels, 
                             self.binary_classification, 
                             res=True, 
-                            final_layer_activation=final_layer_activation)
+                            activation=final_layer_activation)
 
         if print_model:
             print(self)
