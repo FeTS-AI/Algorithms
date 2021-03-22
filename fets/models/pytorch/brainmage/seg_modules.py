@@ -381,7 +381,7 @@ class DecodingModule(nn.Module):
 
 class out_conv(nn.Module):
     def __init__(self, input_channels, output_channels, binary_classification=True, leakiness=1e-2, kernel_size=3,
-        conv_bias=True, inst_norm_affine=True, res=True, lrelu_inplace=True):
+        conv_bias=True, inst_norm_affine=True, res=True, lrelu_inplace=True, activation='softmax'):
         """[The Out convolution module to learn the information and use later]
         
         [This function will create the Learning convolutions]
@@ -404,6 +404,8 @@ class out_conv(nn.Module):
             res {bool} -- [to use residual connections] (default: {False})
             lrelu_inplace {bool} -- [To update conv outputs with lrelu outputs] 
                                     (default: {True})
+            activation {str} -- when binary_clasification==False, the activation function 
+                                to apply to logits (default: 'softmax')
         """
         nn.Module.__init__(self)
         self.binary_classification = binary_classification
@@ -453,8 +455,12 @@ class out_conv(nn.Module):
         x = self.conv3(x)
         if self.binary_classification:
             x = torch.sigmoid(x)  
-        else:
+        elif activation == 'softmax':
             x = F.softmax(x,dim=1)
+        elif activation == 'sigmoid':
+            x = torch.sigmoid(x)
+        else:
+            raise ValueError('Currently only softmax and sigmoid are supported for activations in the case that binary_classification==False.')
         return x
  
 ''' 

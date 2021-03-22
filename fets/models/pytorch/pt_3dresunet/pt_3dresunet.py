@@ -31,13 +31,13 @@ and some other hyperparameters, which remain constant all the modules. For more 
 """
 
 class PyTorch3DResUNet(BrainMaGeModel):
-    def __init__(self, **kwargs):
+    def __init__(self, final_layer_activation='softmax', **kwargs):
         super(PyTorch3DResUNet, self).__init__(**kwargs)
-        self.init_network(device=self.device)
+        self.init_network(device=self.device, final_layer_activation=final_layer_activation)
         self.init_optimizer()
         
 
-    def init_network(self, device, print_model=False, **kwargs):
+    def init_network(self, device, print_model=False, final_layer_activation='softmax', **kwargs):
         self.ins = in_conv(self.n_channels, self.base_filters, res=True)
         self.ds_0 = DownsamplingModule(self.base_filters, self.base_filters*2)
         self.en_1 = EncodingModule(self.base_filters*2, self.base_filters*2, res=True)
@@ -54,7 +54,11 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.us_1 = UpsamplingModule(self.base_filters*4, self.base_filters*2)
         self.de_1 = DecodingModule(self.base_filters*4, self.base_filters*2, res=True)
         self.us_0 = UpsamplingModule(self.base_filters*2, self.base_filters)
-        self.out = out_conv(self.base_filters*2, self.label_channels, self.binary_classification, res=True)
+        self.out = out_conv(self.base_filters*2, 
+                            self.label_channels, 
+                            self.binary_classification, 
+                            res=True, 
+                            final_layer_activation=final_layer_activation)
 
         if print_model:
             print(self)
