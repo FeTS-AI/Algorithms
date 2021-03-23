@@ -355,6 +355,12 @@ class BrainMaGeModel(PyTorchFLModel):
                     #torch.cuda.empty_cache()
                     
                     output = self(features.float())
+
+                    # DEBUG
+                    print("\noutput info:")
+                    print("shape: ", output.shape)
+                    print("max and min sums_across channels first dim : ", torch.max(torch.sum(output, dim=1)), torch.min(torch.sum(output, dim=1)))
+
                     # Computing the loss
                     loss = self.loss_fn(output.float(), mask.float(), num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list, to_scalar=False)
 
