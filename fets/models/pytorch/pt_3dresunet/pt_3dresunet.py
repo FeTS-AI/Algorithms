@@ -36,10 +36,10 @@ class PyTorch3DResUNet(BrainMaGeModel):
 
         if final_layer_activation is None:
             # inferring from data object class_list attribute
-            if (data.class_list == [0, 1]) or (data.class_list == ['4', '1||2||4', '1||4']):
+            if (self.data.class_list == [0, 1]) or (self.data.class_list == ['4', '1||2||4', '1||4']):
                 # single output channel or multi-label
                 final_layer_activation = 'sigmoid'
-            elif data.class_list == [0, 1, 2, 4]:
+            elif self.data.class_list == [0, 1, 2, 4]:
                 # mutually exclusive labels
                 final_layer_activation = 'softmax'
             else:
