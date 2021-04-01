@@ -362,6 +362,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
                     # DEBUG
                     print("\nThis loss: ", loss)
+                    print("")
 
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
@@ -444,6 +445,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
             # DEBUG
             print("\nThis validation dice: ", current_dice)
+            print("")
 
             # the dice results here are dictionaries (sum up the totals)
             for key in total_dice:
