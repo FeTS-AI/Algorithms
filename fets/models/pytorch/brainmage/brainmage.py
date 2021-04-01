@@ -360,6 +360,9 @@ class BrainMaGeModel(PyTorchFLModel):
                     # Computing the loss
                     loss = self.loss_fn(output.float(), mask.float(), num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list, to_scalar=False)
 
+                    # DEBUG
+                    print("\nThis loss: ", loss)
+
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
                         num_nan_losses += 1
@@ -438,6 +441,9 @@ class BrainMaGeModel(PyTorchFLModel):
                                          class_list=self.data.class_list, 
                                          fine_grained=self.validate_with_fine_grained_dice, 
                                          to_scalar=True)
+
+            # DEBUG
+            print("\nThis validation dice: ", current_dice)
 
             # the dice results here are dictionaries (sum up the totals)
             for key in total_dice:
