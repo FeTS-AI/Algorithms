@@ -124,6 +124,47 @@ def clinical_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
     else:
         return - torch.log(clin_dice['AVG(ET,WT,TC)'])
 
+def clinical_dice_loss_w_background(output, 
+                                    target, 
+                                    class_list, 
+                                    background_weight=0.25, 
+                                    smooth=1e-7, 
+                                    **kwargs):
+    if background_weight < 0 or background_weight > 1:
+        raise ValueError('Background weight needs to between 0 an 1.')
+    cdl = clinical_dice_loss(output=output, 
+                             target=target, 
+                             class_list=class_list)
+    bdl = background_dice_loss(output=output, target=target, class_list=class_list)
+    return cdl * (1-background_weight) + bdl * background_weight
+
+
+def background_dice_loss(output, target, class_list, smooth=1e-7):
+
+    # some sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output and target going into clinical_dice do not match.')
+    if output.shape[1] != len(class_list):
+        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
+
+    # We detect two use_cases here, and force a change in the code when another is wanted.
+    # In both cases, we rely on the order of class_list !!!
+    if list(class_list) == [0, 1, 2, 4]:
+        dice = channel_dice(output=output[:,0,:,:,:], 
+                            target=target[:,0,:,:,:], 
+                            smooth=smooth, 
+                            **kwargs)
+    # In this case background is identified via 1 - channel 1.
+    elif list(class_list) == ['4', '1||2||4', '1||4']:
+
+        dice = channel_dice(output=1-output[:,1,:,:,:], 
+                            target=1-target[:,1,:,:,:], 
+                            smooth=smooth, 
+                            **kwargs)
+    else:
+        raise ValueError('clinical dice is not yet designed for this model class_list: ', class_list) 
+
+    return 1 - dice
 
 def channel_dice_loss(output, target, smooth=1e-7, **kwargs):
     return 1 - channel_dice(output=output, 

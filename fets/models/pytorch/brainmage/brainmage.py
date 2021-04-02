@@ -36,7 +36,7 @@ from GANDLF.utils import one_hot
 
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels, clinical_dice_loss, clinical_dice_log_loss, clinical_dice
+from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels, clinical_dice_loss, clinical_dice_log_loss, clinical_dice, clinical_dice_loss_w_background
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -163,6 +163,8 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = clinical_dice_loss
         elif self.which_loss == 'cdll':
             self.loss_fn = clinical_dice_log_loss
+        elif self.which_loss == 'cdlb':
+            self.loss_fn = clinical_dice_loss_w_background
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
