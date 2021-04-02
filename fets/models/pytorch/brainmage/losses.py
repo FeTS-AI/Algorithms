@@ -147,7 +147,7 @@ def background_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
 
     # some sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target going into clinical_dice do not match.')
+        raise ValueError('Shapes of output and target going into background_dice_loss do not match.')
     if output.shape[1] != len(class_list):
         raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
 
@@ -265,6 +265,21 @@ def CE(out,target, **kwargs):
     tflat = target.contiguous().view(-1)
     loss = torch.dot(-torch.log(oflat), tflat)/tflat.sum()
     return loss
+
+def channel_binary_crossentropy(output, target, **kwargs):
+    # computes the average over pixels of binary cross entropy for a single channel output 
+    # channel should perform binary classificiation by output of a float in [0,1]
+
+    # sanity check
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output and target going into binary_channel_crossentropy do not match.')
+    
+    output = torch.flatten(output)
+    target = torch.flatten(target)
+    xent = -torch.dot(torch.log(output), target) - torch.dot(torch.log(1-output), (1-target)) / output.size
+    WORKING HERE
+    return 
+
 
 def CCE(out, target, num_classes, **kwargs):
     acc_ce_loss = 0
