@@ -363,8 +363,8 @@ class GANDLFData(object):
             pickled_train = []
             pickled_val = []
         else:
-            csv_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path))
-            csv_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path))
+            csv_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path, dtype=str))
+            csv_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path, dtype=str))
             subdirs_only_csv_train = list(csv_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
             subdirs_only_csv_val = list(csv_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
 
