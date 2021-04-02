@@ -77,7 +77,7 @@ def read_single_column_csv_to_string_list(fpath):
     if not os.path.exists(fpath):
         return []
     else:
-        dataframe = pd.read_csv(fpath).astype(str)
+        dataframe = pd.read_csv(fpath, dtype=str)
         return list(dataframe[single_column_name])
 
 
