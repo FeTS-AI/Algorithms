@@ -277,7 +277,7 @@ def channel_binary_crossentropy(output, target, **kwargs):
     output = torch.flatten(output)
     target = torch.flatten(target)
     xent = -torch.dot(torch.log(output), target) - torch.dot(torch.log(1-output), (1-target)) / output.size
-    WORKING HERE
+    # WORKING HERE
     return 
 
 
