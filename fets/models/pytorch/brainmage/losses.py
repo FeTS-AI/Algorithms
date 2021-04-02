@@ -127,7 +127,7 @@ def clinical_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
 def clinical_dice_loss_w_background(output, 
                                     target, 
                                     class_list, 
-                                    background_weight=0.25, 
+                                    background_weight=0.5, 
                                     smooth=1e-7, 
                                     **kwargs):
     if background_weight < 0 or background_weight > 1:
