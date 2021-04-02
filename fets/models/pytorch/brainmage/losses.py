@@ -134,12 +134,16 @@ def clinical_dice_loss_w_background(output,
         raise ValueError('Background weight needs to between 0 an 1.')
     cdl = clinical_dice_loss(output=output, 
                              target=target, 
-                             class_list=class_list)
-    bdl = background_dice_loss(output=output, target=target, class_list=class_list)
+                             class_list=class_list, 
+                             **kwargs)
+    bdl = background_dice_loss(output=output, 
+                               target=target, 
+                               class_list=class_list, 
+                               **kwargs)
     return cdl * (1-background_weight) + bdl * background_weight
 
 
-def background_dice_loss(output, target, class_list, smooth=1e-7):
+def background_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
 
     # some sanity checks
     if output.shape != target.shape:
