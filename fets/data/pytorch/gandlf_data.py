@@ -555,10 +555,9 @@ class GANDLFData(object):
         return pd.DataFrame(columns)
 
     def get_sorted_subdirs(self):
-        subdirs_list = os.listdir(self.data_path)
-
-        # filter subdirectories not meant for grabbing subject data
-        subdirs_list = np.sort([subdir for subdir in subdirs_list if subdir not in self.excluded_subdirs])
+        list_dir = os.listdir(self.data_path)
+        # filter entries not meant for grabbing subject data
+        subdirs_list = np.sort([item for item in list_dir if item not in self.excluded_subdirs and os.path.isdir(os.path.join(self.data_path, item))])
         
         return subdirs_list
 
