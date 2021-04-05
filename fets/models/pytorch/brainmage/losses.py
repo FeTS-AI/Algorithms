@@ -124,6 +124,15 @@ def clinical_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
     else:
         return - torch.log(clin_dice['AVG(ET,WT,TC)'])
 
+
+def clinical_dice_loss_w_crossentropy(output, 
+                                    target, 
+                                    class_list, 
+                                    background_weight=0.5, 
+                                    smooth=1e-7, 
+                                    **kwargs):
+    WORKING HERE
+
 def clinical_dice_loss_w_background(output, 
                                     target, 
                                     class_list, 
@@ -268,7 +277,7 @@ def CE(out,target, **kwargs):
 
 def channel_binary_crossentropy(output, target, **kwargs):
     # computes the average over pixels of binary cross entropy for a single channel output 
-    # channel should perform binary classificiation by output of a float in [0,1]
+    # each component in output should be a confidence (in [0,1]) of the 1 outcome (other outcome being 0)
 
     # sanity check
     if output.shape != target.shape:
@@ -276,9 +285,31 @@ def channel_binary_crossentropy(output, target, **kwargs):
     
     output = torch.flatten(output)
     target = torch.flatten(target)
-    xent = -torch.dot(torch.log(output), target) - torch.dot(torch.log(1-output), (1-target)) / output.size
-    # WORKING HERE
-    return 
+    pixel_xent_sum = -torch.dot(torch.log(output), target) - torch.dot(torch.log(1-output), (1-target))
+    return pixel_xent_sum / output.size
+    
+
+def crossentropy_over_channels(output, target, class_list, channel, **kwargs):
+    # computes the average over pixels of cross entropy for multi-class classification 
+    # for each pixel (indices selection over other channels) the channel axis should enumerate a multi-class confidence vector
+    # (so sum over this channel should give 1 for every pixel)
+
+    # sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output and target going into crossentropy_over_channels do not match.')
+    if output.shape[channel] != len(class_list):
+        raise ValueError('Prodived channel length does not indicate it enumerates class confidence scores.')
+
+    # initialization
+    slices = [slice(None) for _ in output.shape]
+    slices[channel] = 0
+    pixel_xent_sum = torch.zeros_like(output[tuple(slices)])
+
+    for idx in range(output.shape[channel]):
+        slices[channel] = idx
+        pixel_xent_sum += -torch.dot(torch.log(output[tuple(slices)]), target[tuple(slices)])
+    
+    return pixel_xent_sum / output[tuple(slices)].size
 
 
 def CCE(out, target, num_classes, **kwargs):
