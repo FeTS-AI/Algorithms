@@ -118,9 +118,9 @@ class GANDLFData(object):
                  force_rerun_with_recent_data_loss = True,
                  **kwargs):
 
-        # some hard-coded atributes
+        # some hard-coded attributes
         # feature stack order (determines order of feature stack modes)
-        # depenency here with mode naming convention used in get_appropriate_file_paths_from_subject_dir
+        # dependency here with mode naming convention used in get_appropriate_file_paths_from_subject_dir
         self.feature_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
         self.label_tag = 'Label'
 
