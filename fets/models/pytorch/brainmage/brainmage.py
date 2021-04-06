@@ -36,7 +36,7 @@ from GANDLF.utils import one_hot
 
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels, clinical_dice_loss, clinical_dice_log_loss, clinical_dice, clinical_dice_loss_w_background
+from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels, brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -159,12 +159,14 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = CE
         elif self.which_loss == 'mse':
             self.loss_fn = MCD_MSE_loss
-        elif self.which_loss == 'cdl':
-            self.loss_fn = clinical_dice_loss
-        elif self.which_loss == 'cdll':
-            self.loss_fn = clinical_dice_log_loss
-        elif self.which_loss == 'cdlb':
-            self.loss_fn = clinical_dice_loss_w_background
+        elif self.which_loss == 'bdl':
+            self.loss_fn = brats_dice_loss
+        elif self.which_loss == 'bdll':
+            self.loss_fn = brats_dice_log_loss
+        elif self.which_loss == 'bdlb':
+            self.loss_fn = brats_dice_loss_w_background
+        elif self.which_loss == 'bdlx':
+            self.loss_fn = brats_dice_loss_w_crossentropy
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
@@ -439,11 +441,11 @@ class BrainMaGeModel(PyTorchFLModel):
 
             # FIXME: Restore the ability to handle binary classification (one channel output)
             # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
-            current_dice = clinical_dice(output=output.float(), 
-                                         target=mask.float(), 
-                                         class_list=self.data.class_list, 
-                                         fine_grained=self.validate_with_fine_grained_dice, 
-                                         to_scalar=True)
+            current_dice = brats_dice(output=output.float(), 
+                                      target=mask.float(), 
+                                      class_list=self.data.class_list, 
+                                      fine_grained=self.validate_with_fine_grained_dice, 
+                                      to_scalar=True)
 
             # DEBUG
             print("\nThis validation dice: ", current_dice)
