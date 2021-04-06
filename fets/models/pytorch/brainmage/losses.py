@@ -145,7 +145,7 @@ def brats_dice_loss_w_crossentropy(output,
 def brats_dice_loss_w_background(output, 
                                  target, 
                                  class_list, 
-                                 background_weight=0.5, 
+                                 background_weight=0.25, 
                                  smooth=1e-7, 
                                  **kwargs):
     if background_weight < 0 or background_weight > 1:
