@@ -31,13 +31,25 @@ and some other hyperparameters, which remain constant all the modules. For more 
 """
 
 class PyTorch3DResUNet(BrainMaGeModel):
-    def __init__(self, **kwargs):
+    def __init__(self, final_layer_activation=None, **kwargs):
         super(PyTorch3DResUNet, self).__init__(**kwargs)
-        self.init_network(device=self.device)
+
+        if final_layer_activation is None:
+            # inferring from data object class_list attribute
+            if (self.data.class_list == [0, 1]) or (self.data.class_list == ['4', '1||2||4', '1||4']):
+                # single output channel or multi-label
+                final_layer_activation = 'sigmoid'
+            elif self.data.class_list == [0, 1, 2, 4]:
+                # mutually exclusive labels
+                final_layer_activation = 'softmax'
+            else:
+                raise ValueError('No final_layer_activation provided and not able to infer the value needed.')      
+
+        self.init_network(device=self.device, final_layer_activation=final_layer_activation)
         self.init_optimizer()
         
 
-    def init_network(self, device, print_model=False, **kwargs):
+    def init_network(self, device, print_model=False, final_layer_activation='softmax', **kwargs):
         self.ins = in_conv(self.n_channels, self.base_filters, res=True)
         self.ds_0 = DownsamplingModule(self.base_filters, self.base_filters*2)
         self.en_1 = EncodingModule(self.base_filters*2, self.base_filters*2, res=True)
@@ -54,7 +66,10 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.us_1 = UpsamplingModule(self.base_filters*4, self.base_filters*2)
         self.de_1 = DecodingModule(self.base_filters*4, self.base_filters*2, res=True)
         self.us_0 = UpsamplingModule(self.base_filters*2, self.base_filters)
-        self.out = out_conv(self.base_filters*2, self.label_channels, self.binary_classification, res=True)
+        self.out = out_conv(self.base_filters*2, 
+                            self.label_channels, 
+                            res=True, 
+                            activation=final_layer_activation)
 
         if print_model:
             print(self)

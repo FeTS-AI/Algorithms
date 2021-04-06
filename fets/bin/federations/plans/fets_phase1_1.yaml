@@ -30,7 +30,7 @@ model_object_init:
     min_learning_rate: 0.00005
     max_learning_rate: 0.00005
     learning_rate_cycles_per_epoch: 2.0
-    loss_function: cdl
+    loss_function: bdl
     opt: adam
     use_penalties: False
     validate_with_fine_grained_dice: True
