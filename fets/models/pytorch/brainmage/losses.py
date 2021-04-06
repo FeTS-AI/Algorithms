@@ -15,14 +15,14 @@ import numpy as np
 import torch
 
 
-def clinical_dice(output, target, class_list, fine_grained=True, smooth=1e-7, **kwargs):
+def brats_dice(output, target, class_list, fine_grained=True, smooth=1e-7, **kwargs):
     # some sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target going into clinical_dice do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if output.shape[1] != len(class_list):
-        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
+        raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
 
-    fine_grained_results = clinical_dice_fine_grained(output=output, 
+    fine_grained_results = brats_dice_fine_grained(output=output, 
                                                       target=target, 
                                                       class_list=class_list, 
                                                       smooth=smooth,
@@ -36,36 +36,36 @@ def clinical_dice(output, target, class_list, fine_grained=True, smooth=1e-7, **
         return {'AVG(ET,WT,TC)': average}
 
 
-def clinical_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
+def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
     # some sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target going into clinical_dice do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if output.shape[1] != len(class_list):
-        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
+        raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
 
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In both cases, we rely on the order of class_list !!!
     if list(class_list) == [0, 1, 2, 4]:
-        clinical_labels = False
+        alt_labels = False
     # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
     elif list(class_list) == ['4', '1||2||4', '1||4']:
-        clinical_labels = True
+        alt_labels = True
     else:
-        raise ValueError('clinical dice is not yet designed for this model class_list: ', class_list)
+        raise ValueError('No implementation for this model class_list: ', class_list)
 
-    if clinical_labels:
+    if alt_labels:
 
-        # channel 0 because of known class_list when clinical_labels is True
+        # channel 0 because of known class_list when alt_labels is True
         dice_for_enhancing = channel_dice(output=output[:,0,:,:,:], 
                                           target=target[:,0,:,:,:], 
                                           smooth=smooth, 
                                           **kwargs)
-        # channel 1 because of known class_list when clinical_labels is True
+        # channel 1 because of known class_list when alt_labels is True
         dice_for_whole = channel_dice(output=output[:,1,:,:,:], 
                                       target=target[:,1,:,:,:], 
                                       smooth=smooth, 
                                       **kwargs)
-        # channel 2 because of known class_list when clinical_labels is True
+        # channel 2 because of known class_list when alt_labels is True
         dice_for_core = channel_dice(output=output[:,2,:,:,:], 
                                      target=target[:,2,:,:,:], 
                                      smooth=smooth, 
@@ -101,29 +101,92 @@ def clinical_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs
     return {'ET': dice_for_enhancing, 'WT': dice_for_whole, 'TC': dice_for_core}
 
 
-def clinical_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice(output=output, 
-                              target=target, 
-                              class_list=class_list,
-                              fine_grained=False, 
-                              smooth=smooth, 
-                              **kwargs)
+def brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    clin_dice = brats_dice(output=output, 
+                           target=target, 
+                           class_list=class_list,
+                           fine_grained=False, 
+                           smooth=smooth, 
+                           **kwargs)
     return 1 - clin_dice['AVG(ET,WT,TC)']
 
 
-def clinical_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
-    clin_dice = clinical_dice(output=output, 
-                              target=target, 
-                              class_list=class_list,
-                              fine_grained=False, 
-                              smooth=smooth, 
-                              **kwargs)
+def brats_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    clin_dice = brats_dice(output=output, 
+                           target=target, 
+                           class_list=class_list,
+                           fine_grained=False, 
+                           smooth=smooth, 
+                           **kwargs)
                               
     if clin_dice['AVG(ET,WT,TC)'] <= 0:
         return 0
     else:
         return - torch.log(clin_dice['AVG(ET,WT,TC)'])
 
+
+def brats_dice_loss_w_crossentropy(output, 
+                                   target, 
+                                   class_list, 
+                                   xent_weight=0.5, 
+                                   smooth=1e-7, 
+                                   **kwargs):
+    brats_loss = brats_dice_loss(output=output, 
+                                 target=target, 
+                                 class_list=class_list, 
+                                 smooth=smooth, 
+                                 **kwargs)
+    xent_loss = crossentropy(output=output, 
+                             target=target, 
+                             class_list=class_list, 
+                             **kwargs)
+    return brats_loss * (1 - xent_weight) + xent_loss * xent_weight
+
+def brats_dice_loss_w_background(output, 
+                                 target, 
+                                 class_list, 
+                                 background_weight=0.5, 
+                                 smooth=1e-7, 
+                                 **kwargs):
+    if background_weight < 0 or background_weight > 1:
+        raise ValueError('Background weight needs to between 0 an 1.')
+    brats_loss = brats_dice_loss(output=output, 
+                                 target=target, 
+                                 class_list=class_list, 
+                                 **kwargs)
+    background_loss = background_dice_loss(output=output, 
+                                           target=target, 
+                                           class_list=class_list, 
+                                           **kwargs)
+    return brats_loss * (1-background_weight) + background_loss * background_weight
+
+
+def background_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
+
+    # some sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
+    if output.shape[1] != len(class_list):
+        raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
+
+    # We detect two use_cases here, and force a change in the code when another is wanted.
+    # In both cases, we rely on the order of class_list !!!
+    if list(class_list) == [0, 1, 2, 4]:
+        dice = channel_dice(output=output[:,0,:,:,:], 
+                            target=target[:,0,:,:,:], 
+                            smooth=smooth, 
+                            **kwargs)
+    # In this case background is identified via 1 - channel 1.
+    elif list(class_list) == ['4', '1||2||4', '1||4']:
+
+        dice = channel_dice(output=1-output[:,1,:,:,:], 
+                            target=1-target[:,1,:,:,:], 
+                            smooth=smooth, 
+                            **kwargs)
+    else:
+        raise ValueError('No impelementation for this model class_list: ', class_list) 
+
+    return 1 - dice
 
 def channel_dice_loss(output, target, smooth=1e-7, **kwargs):
     return 1 - channel_dice(output=output, 
@@ -183,6 +246,7 @@ def dice_loss(output, target, binary_classification, **kwargs):
                                   **kwargs)
 
 
+# FIXME: implement below
 def log_dice_loss(output, target, binary_classification, **kwargs):
     raise NotImplementedError('Find and fix this code')
     # return ave_loss_over_channels(output=output, 
@@ -212,15 +276,93 @@ def dice(out, target):
     intersection = (oflat * tflat).sum()
     return (2*intersection+smooth)/(oflat.sum()+tflat.sum()+smooth)
 
-# TODO: make the cross entropy w.r.t. something more like probabilities.
+# FIXME: /tflat.sum()? (implemented some other crossentropies below)
 def CE(out,target, **kwargs):
-    if bool(torch.sum(target) == 0): # contingency for empty mask
-        return 0
-    oflat = out.contiguous().view(-1)
-    tflat = target.contiguous().view(-1)
-    loss = torch.dot(-torch.log(oflat), tflat)/tflat.sum()
-    return loss
+    raise NotImplementedError('Find and fix this code')
+    # if bool(torch.sum(target) == 0): # contingency for empty mask
+    #     return 0
+    # oflat = out.contiguous().view(-1)
+    # tflat = target.contiguous().view(-1)
+    # loss = torch.dot(-torch.log(oflat), tflat)/tflat.sum()
+    # return loss
 
+def channel_binary_crossentropy(output, target, **kwargs):
+    # computes the average over pixels of binary cross entropy for a single channel output 
+    # each component in output should be a confidence (in (0,1) of the 1 outcome (other outcome being 0)
+
+    # sanity check
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
+    if torch.sum(output==0.0)>0:
+        raise ValueError('Output must be positive.')
+    
+    output = torch.flatten(output)
+    target = torch.flatten(target)
+    pixel_xent_sum = -torch.dot(torch.log(output), target) - torch.dot(torch.log(1-output), (1-target))
+    return pixel_xent_sum / (output.size().numel())
+    
+
+def crossentropy_over_channels(output, target, class_list, channel, **kwargs):
+    # computes the average over pixels of cross entropy for multi-class classification 
+    # for each pixel (indices selection over other channels) the channel axis should enumerate a multi-class confidence vector
+    # (so sum over this channel should give 1 for every pixel, and no channel should ever be exactly zero)
+
+    # sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
+    if output.shape[channel] != len(class_list):
+        raise ValueError('Channel length does not indicate it enumerates class confidence scores (provided channel is {}, output shape is {}, and there are {} classes).'.format(channel, output.shape, len(class_list)))
+    if torch.sum(output==0.0)>0:
+        raise ValueError('Output must be positive.')
+
+    # initialization
+    slices = [slice(None) for _ in output.shape]
+    pixel_xent_sum = 0
+
+    for idx in range(output.shape[channel]):
+        slices[channel] = idx
+
+        partial_output = torch.flatten(output[tuple(slices)])
+        partial_target = torch.flatten(target[tuple(slices)])
+        pixel_xent_sum += -torch.dot(torch.log(partial_output), partial_target)
+        
+    return pixel_xent_sum / (output[tuple(slices)].size().numel())
+
+
+def crossentropy(output, target, class_list, **kwargs):
+    #FIXME: Do we really want to by default include the background channel in the first class_list case?
+    #       Or should we at least make that configurable?
+
+    class_channel = 1
+
+    # sanity checks
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
+    if output.shape[class_channel] != len(class_list):
+        raise ValueError('The output and target shape {} is inconsistent with the hard coded class channel {} and number of classes {}.'.format(output.shape, class_channel, len(class_list)))
+
+    # We detect two use_cases here, and force a change in the code when another is wanted.
+    # In both cases, we rely on the order of class_list !!!
+    if list(class_list) == [0, 1, 2, 4]:
+        return crossentropy_over_channels(output=output, 
+                                          target=target, 
+                                          class_list=class_list, 
+                                          channel=1, 
+                                          **kwargs)
+    elif list(class_list) == ['4', '1||2||4', '1||4']:
+        # here we have a cross-entropy associated to each task (classes relate to independent tasks)
+        xent_sum_across_tasks = 0
+        for channel in range(output.shape[class_channel]):
+           slices = [slice(None) for _ in output.shape]
+           slices[class_channel] = channel 
+           xent_sum_across_tasks += channel_binary_crossentropy(output=output, 
+                                                                target=target, 
+                                                                **kwargs)
+        return xent_sum_across_tasks / len(class_list)
+    else:
+        raise ValueError('No impelementation for this model class_list: ', class_list) 
+
+    
 def CCE(out, target, num_classes, **kwargs):
     acc_ce_loss = 0
     for i in range(num_classes):

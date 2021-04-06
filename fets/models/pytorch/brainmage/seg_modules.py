@@ -380,8 +380,16 @@ class DecodingModule(nn.Module):
         return x
 
 class out_conv(nn.Module):
-    def __init__(self, input_channels, output_channels, binary_classification=True, leakiness=1e-2, kernel_size=3,
-        conv_bias=True, inst_norm_affine=True, res=True, lrelu_inplace=True):
+    def __init__(self, 
+                 input_channels, 
+                 output_channels, 
+                 leakiness=1e-2, 
+                 kernel_size=3,
+                 conv_bias=True, 
+                 inst_norm_affine=True, 
+                 res=True, 
+                 lrelu_inplace=True, 
+                 activation='softmax'):
         """[The Out convolution module to learn the information and use later]
         
         [This function will create the Learning convolutions]
@@ -391,10 +399,6 @@ class out_conv(nn.Module):
                                        the number of channels from downsample]
             output_channels {[int]} -- [the output number of channels, will det-
                                         -ermine the upcoming channels]
-            binary_classification {[bool]} -- signals that the per-pixel output is one
-                                              channel with values between 0 and 1, otherwise
-                                              is multi-channel over which a softmax should be
-                                              applied
         
         Keyword Arguments:
             kernel_size {number} -- [size of filter] (default: {3})
@@ -404,10 +408,11 @@ class out_conv(nn.Module):
             res {bool} -- [to use residual connections] (default: {False})
             lrelu_inplace {bool} -- [To update conv outputs with lrelu outputs] 
                                     (default: {True})
+            activation {str} -- the activation function to apply to logits (default: 'softmax')
         """
         nn.Module.__init__(self)
-        self.binary_classification = binary_classification
         self.lrelu_inplace = lrelu_inplace
+        self.activation = activation
         self.inst_norm_affine = inst_norm_affine
         self.conv_bias = conv_bias
         self.leakiness = leakiness
@@ -439,7 +444,6 @@ class out_conv(nn.Module):
         
     def forward(self, x1, x2):
         x = torch.cat([x1, x2], dim=1)
-        #print(x.shape)
         x = F.leaky_relu(self.in_0(x))
         x = self.conv0(x)
         if self.res == True:
@@ -451,10 +455,12 @@ class out_conv(nn.Module):
             x = x + skip
         x = F.leaky_relu(self.in_3(x))
         x = self.conv3(x)
-        if self.binary_classification:
-            x = torch.sigmoid(x)  
-        else:
+        if self.activation == 'softmax':
             x = F.softmax(x,dim=1)
+        elif self.activation == 'sigmoid':
+            x = torch.sigmoid(x)
+        else:
+            raise ValueError('Currently only softmax and sigmoid activations are supported.')
         return x
  
 ''' 
