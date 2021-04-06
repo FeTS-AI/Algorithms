@@ -9,13 +9,11 @@ import numpy as np
 import torch
 import torchio
 import pandas as pd
-import pickle as pkl
 
 from torch.utils.data import DataLoader
 
 # put GANDLF in as a submodule staat pip install
 from GANDLF.data.ImagesFromDataFrame import ImagesFromDataFrame
-from GANDLF.parseConfig import parseConfig
 
 from fets.data.gandlf_utils import get_dataframe_and_headers
 from fets.data import get_appropriate_file_paths_from_subject_dir
@@ -65,25 +63,32 @@ def crop_image_outside_zeros(array, psize):
     return small_idx_corner, large_idx_corner, new_array
 
 
-def load_pickle(fpath):
-    if os.path.exists(fpath):
-        with open(fpath, 'rb') as _file:
-            return pkl.load(_file)
+# used in two functions below
+single_column_name = 'data_uid'
+
+
+def write_list_to_single_column_csv(_list, fpath):
+    dataframe = pd.DataFrame({single_column_name: _list})
+    dataframe.to_csv(fpath, index=False)
+
+
+def read_single_column_csv_to_string_list(fpath):
+    # FIXME: Note dependency with write_list_to_csv (above)
+    if not os.path.exists(fpath):
+        return []
     else:
-        return None
+        dataframe = pd.read_csv(fpath, dtype=str)
+        return list(dataframe[single_column_name])
 
 
-def dump_pickle(objct, path):
-    with open(path, 'wb') as _file:
-        pkl.dump(objct, _file)
+def set_to_sorted_list(_set):
+    return sorted(list(_set))
 
 
-def dataframe_as_string(dataframe):
-    return dataframe.astype(str)
-
-
-def dataframe_to_string_csv(dataframe, path):
-    dataframe_as_string(dataframe).to_csv(path, index=False)    
+def fpaths_to_uid(fpaths):
+    # TODO: More integrity checks here 
+    #       For now simply getting parent directory of the T1 file.
+    return os.path.split(os.path.split(fpaths['T1'])[0])[1]
 
 
 class GANDLFData(object):
@@ -173,6 +178,9 @@ class GANDLFData(object):
 
         # sudirectories to skip when listing patient subdirectories inside data directory
         self.excluded_subdirs = excluded_subdirs
+
+        # default (otherwise set inside self.get_data_uids_from_disk)
+        self.uids_to_subirs = None
         
         #################################################################
         # The following attributes apply only to data-usage='train-val' #
@@ -239,54 +247,54 @@ class GANDLFData(object):
         else:
             self.allow_previously_unseen_data = self.allow_new_data_into_previous_split
 
-        on_disk = self.get_data_from_disk()
+        on_disk = self.get_data_uids_from_disk()
         self.num_on_disk = len(on_disk)
 
         past_train, past_val = self.get_past_data()
 
         lost_train, lost_val = self.compare_disk_to_past(on_disk, past_train, past_val)
    
-        init_train = on_disk.intersection(past_train)
+        init_train = set_to_sorted_list(set(on_disk).intersection(set(past_train)))
         self.num_train_historical_assignments = len(init_train)
         
-        init_val = on_disk.intersection(past_val)
+        init_val = set_to_sorted_list(set(on_disk).intersection(set(past_val)))
         self.num_val_historical_assignments = len(init_val)
         
 
         if self.allow_previously_unseen_data:
-            to_split = on_disk - init_train - init_val
+            to_split = set_to_sorted_list(set(on_disk) - set(init_train) - set(init_val))
             self.num_fresh_to_split = len(to_split)
             
-            new_train, new_val = self.split(list(to_split), 
+            new_train, new_val = self.split(to_split, 
                                             num_existing_train=len(init_train), 
                                             num_existing_val=len(init_val))
             self.num_train_fresh_assignments = len(new_train)
             self.num_val_fresh_assignments = len(new_val)
 
-            train = list(init_train.union(set(new_train)))    
-            val = list(init_val.union(set(new_val)))          
+            train = set_to_sorted_list(set(init_train).union(set(new_train)))    
+            val = set_to_sorted_list(set(init_val).union(set(new_val)))          
         else:
-            train = list(init_train)
-            val = list(init_val)
+            train = init_train
+            val = init_val
 
         self.check_for_undesirable_split(train=train, val=val)
 
         # writing out lost data and split info (find out if newly lost samples were found)
-        newly_lost_train, newly_lost_val = self.record_lost_data(lost_train=list(lost_train), lost_val=list(lost_val))
+        newly_lost_train, newly_lost_val = self.record_lost_data(lost_train=lost_train, lost_val=lost_val)
         self.record_split_info(train=train, val=val)
 
         if (newly_lost_train != [] or newly_lost_val != []) and self.force_rerun_with_recent_data_loss:
-            raise ValueError('Subdirectories train: {}, val: {} are newly missing, and force_rerun_with_recent_data_loss is True. Put these directories back into {} and re-run, or re-run without them.'.format(newly_lost_train, newly_lost_val, self.data_path))
+            raise ValueError('Train with UIDs: {}, and  Val with UIDs: {} are newly missing, and force_rerun_with_recent_data_loss is True. Put this data back into {} and re-run, or re-run without them.'.format(newly_lost_train, newly_lost_val, self.data_path))
         
         # constructing dataframes, then loaders from the dataframes
-        train_dataframe, val_dataframe = self.create_train_val_dataframes(train_subdirs=train, val_subdirs=val)     
+        train_dataframe, val_dataframe = self.create_train_val_dataframes(train_uids=train, val_uids=val)     
         self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
 
-    def get_data_from_disk(self, include_labels=True, return_as_set=True):
-        good_subdirs = []
-   
-        subdirs_to_fpaths = {}
-        incomplete_subdirs = []
+    def get_data_uids_from_disk(self, include_labels=True):
+        good_data_uids = []
+        uids_to_fpaths = {}
+        uids_to_subdirs = {}
+        incomplete_data_subdirs = []
         for subdir in self.get_sorted_subdirs():
             subdir_path = os.path.join(self.data_path, subdir)
             fpaths = get_appropriate_file_paths_from_subject_dir(dir_path=subdir_path, 
@@ -294,23 +302,33 @@ class GANDLFData(object):
                                                                  handle_missing_datafiles=self.handle_missing_datafiles)
             if fpaths is None:
                 if self.handle_missing_datafiles:
-                    incomplete_subdirs.append(subdir_path)
+                    incomplete_data_subdirs.append(subdir)
                     continue
                 else:
-                    raise ValueError('Unexpected None return from get_appropriate_fiile_paths_from_subject_dir')
+                    raise ValueError('Unexpected None return from get_appropriate_file_paths_from_subject_dir')
             else:
-                good_subdirs.append(subdir)
-                subdirs_to_fpaths[subdir] = fpaths
-        if len(incomplete_subdirs) != 0:
-            print('\nIgnoring subdirecories: {} as they are missing needed data files.\n'.format(incomplete_subdirs))
-        if return_as_set:
-            good_subdirs = set(good_subdirs)
-
-        if hasattr(self, 'subdirs_to_fpaths'):
-            raise RuntimeError('Use-cases comprehended for attribute subdirs_to_fpaths is currently only write-once.')
-        self.subdirs_to_fpaths = subdirs_to_fpaths
+                uid = fpaths_to_uid(fpaths)
+                good_data_uids.append(uid)
+                uids_to_fpaths[uid] = fpaths
+                uids_to_subdirs[uid] = subdir
+   
+        if len(incomplete_data_subdirs) != 0:
+            print('\nIgnoring subdirectories: {} as they are missing needed data files.\n'.format(incomplete_data_subdirs))
         
-        return good_subdirs
+        if hasattr(self, 'uids_to_fpaths'):
+            raise RuntimeError('Use-cases comprehended for attribute uids_to_fpaths is currently only write-once.')
+        self.uids_to_fpaths = uids_to_fpaths
+        if hasattr(self, 'uids_to_subdirs'):
+            raise RuntimeError('Use-cases comprehended for attribute uids_to_subdirs is currently only write-once.')
+        self.uids_to_subdirs = uids_to_subdirs
+        
+        return sorted(good_data_uids)
+
+    def get_subdirs_from_uids(self, uids):
+        if self.uids_to_subdirs is None:
+            raise ValueError('Asking for self.uids_to_subdirs before calling self.get_data_uids_from_disk where this attribute is set.')
+        else:
+            return [self.uids_to_subdirs[uid] for uid in uids]
                        
     def subdirs_to_subdirpaths(self, subdirs):
         return [os.path.join(self.data_path, subdir) for subdir in subdirs]
@@ -343,39 +361,32 @@ class GANDLFData(object):
         past_split_exists = False
         # check for some cases we will not tolerate
         if os.path.exists(self.split_instance_dirpath):
-            need_all = [self.train_csv_path, self.val_csv_path, self.pickled_split_path]
-            need_all_or_none = [self.pickled_lost_train_path, self.pickled_lost_val_path]
+            need_all = [self.train_info_path, self.val_info_path]
+            need_all_or_none = [self.lost_train_info_path, self.lost_val_info_path]
             exists_in_all = [os.path.exists(_path) for _path in need_all]
             exists_in_all_or_none = [os.path.exists(_path) for _path in need_all_or_none]
             if not np.all(exists_in_all):
-                raise ValueError('At least one of {} is missing!! Carefully recover (contents were printed to stdout during last run).'.format(need_all))
+                raise ValueError('At least one of {} is missing!! Carefully recover, using information printed to stdout during last run.'.format(need_all))
             if np.any(exists_in_all_or_none) and not np.all(exists_in_all_or_none):
-                raise ValueError('All or none of: {} should exists, but exactly one was found!! Carefully recover (contents were printed to stdout during last run).'.format(need_all_or_none))
+                raise ValueError('All or none of: {} should exists, but exactly one was found!! Carefully recover, using information printed to stdout during last run.'.format(need_all_or_none))
             past_split_exists = True
         return past_split_exists
 
     def get_split_info(self):
         self.sanity_check_split_info()
-        # get split from csvs and pickle (above check confirms they exist if split instance does)
-        if not os.path.exists(self.split_instance_dirpath):
-            subdirs_only_csv_train = []
-            subdirs_only_csv_val = []
-            pickled_train = []
-            pickled_val = []
-        else:
-            csv_train_dataframe = dataframe_as_string(pd.read_csv(self.train_csv_path, dtype=str))
-            csv_val_dataframe = dataframe_as_string(pd.read_csv(self.val_csv_path, dtype=str))
-            subdirs_only_csv_train = list(csv_train_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-            subdirs_only_csv_val = list(csv_val_dataframe[str(self.train_val_headers['subjectIDHeader'])])
-
-            pickled_train, pickled_val = load_pickle(self.pickled_split_path)
+        # returns empty lists if path does not exist
+        train_info = read_single_column_csv_to_string_list(fpath=self.train_info_path)
+        val_info = read_single_column_csv_to_string_list(fpath=self.val_info_path)
             
-        # check for consistency
-        if subdirs_only_csv_train != pickled_train:
-            raise ValueError('Train csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
-        if subdirs_only_csv_val != pickled_val:
-            raise ValueError('Validation csv and pickled split info do not match. Carefully recover (contents were printed to stdout during last run).')
-        return sorted(subdirs_only_csv_train), sorted(subdirs_only_csv_val)
+        return train_info, val_info
+
+    def get_lost_data(self):
+        self.sanity_check_split_info()
+        # returns empty lists if path does not exist
+        lost_train = read_single_column_csv_to_string_list(fpath=self.lost_train_info_path)
+        lost_val = read_single_column_csv_to_string_list(fpath=self.lost_val_info_path)
+
+        return lost_train, lost_val
 
     def get_past_data(self):
         split_train, split_val = self.get_split_info()
@@ -389,41 +400,33 @@ class GANDLFData(object):
         if past_train.intersection(past_val) != set():
             raise ValueError('Somehow there is a record of training intersecting validation.')
 
-        return past_train, past_val
+        return set_to_sorted_list(past_train), set_to_sorted_list(past_val)
 
     def compare_disk_to_past(self, on_disk, past_train, past_val):
 
-        lost_train = past_train - on_disk
-        lost_val = past_val - on_disk
+        lost_train = set_to_sorted_list(set(past_train) - set(on_disk))
+        lost_val = set_to_sorted_list(set(past_val) - set(on_disk))
 
-        if (lost_train != set([])) or (lost_val != set([])):
+        if (lost_train != []) or (lost_val != []):
             # sanity check
             if not os.path.exists(self.split_instance_dirpath):
                 raise RuntimeError('Claiming lost data when no historical data info exists.')
             
-            if lost_train != set([]):
-                print('\nWARNING: Train samples: {} from split: {} now missing on disk.\n'.format(list(lost_train), self.split_instance_dirname))
+            if lost_train != []:
+                print('\nWARNING: Training data with UIDs: {} from split: {} now missing on disk.\n'.format(lost_train, self.split_instance_dirname))
                 if not self.handle_data_loss_from_previous_split:
-                    raise ValueError('Train samples: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(list(lost_train), self.split_instance_dirname))
-            if lost_val != set([]):
-                print('\nWARNING: Val samples: {} from split: {} now missing on disk.\n'.format(list(lost_val), self.split_instance_dirname))
+                    raise ValueError('Training data with UIDs: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(lost_train, self.split_instance_dirname))
+            if lost_val != []:
+                print('\nWARNING: Validation data with UIDs: {} from split: {} now missing on disk.\n'.format(lost_val, self.split_instance_dirname))
                 if not self.handle_data_loss_from_previous_split:
-                    raise ValueError('Val samples: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(list(lost_val), self.split_instance_dirname))
+                    raise ValueError('Validation data with UIDs: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(lost_val, self.split_instance_dirname))
 
         return lost_train, lost_val           
 
-    def get_lost_data(self):
-        self.sanity_check_split_info()
-        # get lost data info from pickle (above check confirms either both lost data files or neither exists)
-        lost_train = load_pickle(self.pickled_lost_train_path) or []
-        lost_val = load_pickle(self.pickled_lost_val_path) or []
-
-        return sorted(lost_train), sorted(lost_val)
-
     def record_split_info(self, train, val):
 
-        train = sorted(train)
-        val = sorted(val)
+        # TODO: Replace print to stdout with logging
+
         print('\n Data split information:')
         print('\n{} good data subdirectories were found in {}'.format(self.num_on_disk, self.data_path))
         if self.num_train_historical_assignments + self.num_val_historical_assignments != 0:
@@ -433,14 +436,14 @@ class GANDLFData(object):
         elif not self.allow_previously_unseen_data and (self.num_on_disk > self.num_train_historical_assignments + self.num_val_historical_assignments):
             print('Not allowing previously unseen data samples into split, since old split info exists and allow_new_data_into_previous_split is False.')
         
-        print('\nSubdirectories used for training: {}'.format(train))
+        print('\nSubdirectories (uids) to be used for training: {}({})'.format(self.get_subdirs_from_uids(train), train))
         if self.num_train_historical_assignments != 0:
             print('{} assigned using previous split info.'.format(self.num_train_historical_assignments))
         if self.allow_previously_unseen_data and (self.num_train_fresh_assignments != 0):
             print('{} newly assigned.'.format(self.num_train_fresh_assignments))
 
 
-        print('\nSubdirectories used for validation: {}'.format(val))
+        print('\nSubdirectories (uids) to be used for validation: {}({})'.format(self.get_subdirs_from_uids(val), val))
         if self.num_val_historical_assignments != 0:
             print('{} assigned using previous split info.'.format(self.num_val_historical_assignments))
         if self.allow_previously_unseen_data and (self.num_val_fresh_assignments != 0):
@@ -461,32 +464,26 @@ class GANDLFData(object):
         if write_out:
             if not os.path.exists(self.split_instance_dirpath):
                 os.mkdir(self.split_instance_dirpath)
-            dump_pickle((list(train), list(val)), path=self.pickled_split_path) 
-            temp_train_dataframe, temp_val_dataframe = self.create_train_val_dataframes(train_subdirs=train, 
-                                                                                        val_subdirs=val)
-            dataframe_to_string_csv(dataframe=temp_train_dataframe, path=self.train_csv_path)
-            dataframe_to_string_csv(dataframe=temp_val_dataframe, path=self.val_csv_path)
+            write_list_to_single_column_csv(train, fpath=self.train_info_path)
+            write_list_to_single_column_csv(val, fpath=self.val_info_path)
     
     def record_lost_data(self, lost_train, lost_val):
         # write lost data info to disk if this information is different from previously recorded. 
         # Also return any lost samples, newly detected on this run.
 
-        lost_train = sorted(lost_train)
-        lost_val = sorted(lost_val)
-
         lists_empty = (len(lost_train) + len(lost_val) == 0)  
         self.sanity_check_split_info()
         
-        # sanity check above ensures either one or both of lost data files are present
-        old_lost_info_present = os.path.exists(self.pickled_lost_train_path)
+        # sanity check above ensures either both or none of lost data files are present
+        old_lost_info_present = os.path.exists(self.lost_train_info_path)
 
         newly_lost_train = []
         newly_lost_val = []
         
         if (not lists_empty) or old_lost_info_present:
-            print('\nLost data info:')
-            print('Subdirectories: {} were previously used for training but now missing in {}'.format(lost_train, self.data_path))
-            print('Subdirectories: {} were previously used for validation but now missing in {}\n'.format(lost_val, self.data_path)) 
+            print('\nLost data info:\n')
+            print('Data with UIDs: {} were previously used for training but now missing from {}'.format(lost_train, self.data_path))
+            print('Data with UIDs: {} were previously used for validation but now missing from {}\n'.format(lost_val, self.data_path)) 
 
             write_out = False
             
@@ -500,14 +497,14 @@ class GANDLFData(object):
                 previous_lost_train, previous_lost_val = self.get_lost_data()
                 if (previous_lost_train != lost_train) or (previous_lost_val != lost_val):
                     write_out=True
-                    newly_lost_train = sorted(list(set(lost_train) - set(previous_lost_train)))
-                    newly_lost_val = sorted(list(set(lost_val) - set(previous_lost_val)))
+                    newly_lost_train = set_to_sorted_list(set(lost_train) - set(previous_lost_train))
+                    newly_lost_val = set_to_sorted_list(set(lost_val) - set(previous_lost_val))
 
             if write_out:
                 if not os.path.exists(self.split_instance_dirpath):
                     os.mkdir(self.split_instance_dirpath)
-                dump_pickle(list(lost_train), path=self.pickled_lost_train_path)
-                dump_pickle(list(lost_val), path=self.pickled_lost_val_path)
+                write_list_to_single_column_csv(lost_train, fpath=self.lost_train_info_path)
+                write_list_to_single_column_csv(lost_val, fpath=self.lost_val_info_path)
 
         return newly_lost_train, newly_lost_val 
 
@@ -528,50 +525,47 @@ class GANDLFData(object):
     def set_split_info_paths(self):
 
         # hard coded file names
-        train_csv_fname = 'train.csv'
-        val_csv_fname = 'val.csv'
-        pickled_split_fname = 'pickled_train_val_lists_tuple.pkl'
-        lost_train_fname = 'lost_train.pkl'
-        lost_val_fname = 'lost_val.pkl'
+        train_info_fname = 'train.csv'
+        val_info_fname = 'val.csv'
+        lost_train_info_fname = 'lost_train.csv'
+        lost_val_info_fname = 'lost_val.csv'
 
         # derived paths
         split_info_dirpath = os.path.join(self.data_path, self.split_info_dirname)
         self.split_instance_dirpath = os.path.join(split_info_dirpath, self.split_instance_dirname)
-        self.train_csv_path = os.path.join(self.split_instance_dirpath, train_csv_fname)
-        self.val_csv_path = os.path.join(self.split_instance_dirpath, val_csv_fname)
-        self.pickled_split_path = os.path.join(self.split_instance_dirpath, pickled_split_fname)
-        self.pickled_lost_train_path = os.path.join(self.split_instance_dirpath, lost_train_fname)
-        self.pickled_lost_val_path = os.path.join(self.split_instance_dirpath, lost_val_fname)
+        self.train_info_path = os.path.join(self.split_instance_dirpath, train_info_fname)
+        self.val_info_path = os.path.join(self.split_instance_dirpath, val_info_fname)
+        self.lost_train_info_path = os.path.join(self.split_instance_dirpath, lost_train_info_fname)
+        self.lost_val_info_path = os.path.join(self.split_instance_dirpath, lost_val_info_fname)
 
         if not os.path.exists(split_info_dirpath):
             os.mkdir(split_info_dirpath)
 
 
-    def create_dataframe(self, subdirs, include_labels):
+    def create_dataframe(self, uids, include_labels):
 
         columns = {header: [] for header in self.headers_list if (header is not None)}
-        for subdir in subdirs:
-            fpaths = self.subdirs_to_fpaths[subdir] 
+        for uid in uids:
+            fpaths = self.uids_to_fpaths[uid] 
             # write dataframe row
-            columns[self.headers_list[0]].append(subdir)
+            columns[self.headers_list[0]].append(uid)
             for header in self.headers_list[1:]:
                 if header is not None:
                     columns[header].append(fpaths[self.numeric_header_name_to_key[header]])
         return pd.DataFrame(columns)
 
     def get_sorted_subdirs(self):
-        subdirs_list = os.listdir(self.data_path)
-
-        # filter subdirectories not meant for grabbing subject data
-        subdirs_list = np.sort([subdir for subdir in subdirs_list if subdir not in self.excluded_subdirs])
+        list_dir = os.listdir(self.data_path)
+        # filter entries not meant for grabbing subject data
+        subdirs_list = np.sort([item for item in list_dir if item not in self.excluded_subdirs and os.path.isdir(os.path.join(self.data_path, item))])
         
         return subdirs_list
 
-    def create_train_val_dataframes(self, train_subdirs, val_subdirs):
+    def create_train_val_dataframes(self, train_uids, val_uids):
                 
         # create the dataframes
-        train_dataframe = self.create_dataframe(train_subdirs, include_labels=True)
-        val_dataframe = self.create_dataframe(val_subdirs, include_labels=True)
+        train_dataframe = self.create_dataframe(train_uids, include_labels=True)
+        val_dataframe = self.create_dataframe(val_uids, include_labels=True)
 
         return train_dataframe, val_dataframe
 
@@ -586,9 +580,9 @@ class GANDLFData(object):
 
     
     def create_inference_dataframe(self):
-        inference_subdirs = self.get_data_from_disk(include_labels=False, return_as_set=False)
+        inference_uids = self.get_data_uids_from_disk(include_labels=False)
         # create the dataframes
-        inference_dataframe = self.create_dataframe(inference_subdirs, include_labels=False)
+        inference_dataframe = self.create_dataframe(inference_uids, include_labels=False)
     
         return inference_dataframe
         
