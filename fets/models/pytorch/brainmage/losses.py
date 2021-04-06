@@ -18,9 +18,9 @@ import torch
 def brats_dice(output, target, class_list, fine_grained=True, smooth=1e-7, **kwargs):
     # some sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if output.shape[1] != len(class_list):
-        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
+        raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
 
     fine_grained_results = brats_dice_fine_grained(output=output, 
                                                       target=target, 
@@ -39,9 +39,9 @@ def brats_dice(output, target, class_list, fine_grained=True, smooth=1e-7, **kwa
 def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
     # some sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if output.shape[1] != len(class_list):
-        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
+        raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
 
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In both cases, we rely on the order of class_list !!!
@@ -165,9 +165,9 @@ def background_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
 
     # some sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if output.shape[1] != len(class_list):
-        raise ValueError('The channel of output (and target) expected to enumerate class channels is not the right size.')
+        raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
 
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In both cases, we rely on the order of class_list !!!
@@ -292,7 +292,7 @@ def channel_binary_crossentropy(output, target, **kwargs):
 
     # sanity check
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if torch.sum(output==0.0)>0:
         raise ValueError('Output must be positive.')
     
@@ -309,9 +309,9 @@ def crossentropy_over_channels(output, target, class_list, channel, **kwargs):
 
     # sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if output.shape[channel] != len(class_list):
-        raise ValueError('Prodived channel length does not indicate it enumerates class confidence scores.')
+        raise ValueError('Channel length does not indicate it enumerates class confidence scores (provided channel is {}, output shape is {}, and there are {} classes).'.format(channel, output.shape, len(class_list)))
     if torch.sum(output==0.0)>0:
         raise ValueError('Output must be positive.')
 
@@ -337,9 +337,9 @@ def crossentropy(output, target, class_list, **kwargs):
 
     # sanity checks
     if output.shape != target.shape:
-        raise ValueError('Shapes of output and target do not match.')
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
     if output.shape[class_channel] != len(class_list):
-        raise ValueError('The output and target is inconsistent with the hard coded class channel.')
+        raise ValueError('The output and target shape {} is inconsistent with the hard coded class channel {} and number of classes {}.'.format(output.shape, class_channel, len(class_list)))
 
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In both cases, we rely on the order of class_list !!!
