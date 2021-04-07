@@ -196,7 +196,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
         # TODO: To sync learning rate cycle across collaborators, we assume each collaborator is training 
         # a set fraction of an epoch (rather than a set number of batches) otherwise use batch_num based cycle length
-        cycle_length =  int((float(self.data.get_training_data_size())/float(self.data.training_batch_size)) / float(self.learning_rate_cycles_per_epoch))
+        cycle_length =  int((float(self.data.get_training_data_size())/float(self.data.batch_size)) / float(self.learning_rate_cycles_per_epoch))
         if cycle_length == 0:
             if self.data.get_training_data_size == 0:
                 cycle_length = 1
