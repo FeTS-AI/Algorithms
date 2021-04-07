@@ -36,7 +36,9 @@ from GANDLF.utils import one_hot
 
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels, brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
+from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
+from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
+from .losses import background_dice_loss, crossentropy
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -159,14 +161,18 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = CE
         elif self.which_loss == 'mse':
             self.loss_fn = MCD_MSE_loss
-        elif self.which_loss == 'bdl':
+        elif self.which_loss == 'brats_dice_loss':
             self.loss_fn = brats_dice_loss
-        elif self.which_loss == 'bdll':
+        elif self.which_loss == 'brats_dice_log_loss':
             self.loss_fn = brats_dice_log_loss
-        elif self.which_loss == 'bdlb':
+        elif self.which_loss == 'brats_dice_loss_w_background':
             self.loss_fn = brats_dice_loss_w_background
-        elif self.which_loss == 'bdlx':
+        elif self.which_loss == 'brats_dice_loss_w_crossentropy':
             self.loss_fn = brats_dice_loss_w_crossentropy
+        elif self.which_loss == 'crossentropy':
+            self.loss_fn = crossentropy
+        elif self.which_loss == 'background_dice_loss':
+            self.loss_fn = background_dice_loss 
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
@@ -188,12 +194,9 @@ class BrainMaGeModel(PyTorchFLModel):
                                         betas = (0.9,0.999), 
                                         weight_decay = 0.00005)
 
-        # If this is removed, need to redo the cylce_length calculation below
-        assert self.data.batch_size == 1
-
         # TODO: To sync learning rate cycle across collaborators, we assume each collaborator is training 
         # a set fraction of an epoch (rather than a set number of batches) otherwise use batch_num based cycle length
-        cycle_length =  int(float(self.data.get_training_data_size()) / float(self.learning_rate_cycles_per_epoch))
+        cycle_length =  int((float(self.data.get_training_data_size())/float(self.data.batch_size)) / float(self.learning_rate_cycles_per_epoch))
         if cycle_length == 0:
             if self.data.get_training_data_size == 0:
                 cycle_length = 1
