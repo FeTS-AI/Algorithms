@@ -35,7 +35,7 @@ do
     printf "\n\nStarting training with plan ${PLAN}" 
     printf "\n(NOTE: should be in your virtualenv with CUDA_VISIBLE_DEVICES defined)."
     printf "\nOFL logs will go to: ${OFL_LOGDIR} \n\n"
-    cmd="python ${PATH_TO_RUN_SIMULATION}/run_simulation_from_flplan.py -p ${PLAN} -c pretraining_col.yaml -md cuda -ld ${OFL_LOGDIR} -vwop -dim -dqml 1 -dqnw 1"
+    cmd="python ${PATH_TO_RUN_SIMULATION}/run_simulation_from_flplan.py -p ${PLAN} -c pretraining_col.yaml -md cuda -ld ${OFL_LOGDIR} -vwop"
      
     time $cmd 
  
