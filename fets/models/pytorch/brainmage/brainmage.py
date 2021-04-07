@@ -38,7 +38,7 @@ from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
 from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
 from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
-from .losses import background_dice_loss, crossentropy
+from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirorred_brats_dice_loss
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -153,9 +153,10 @@ class BrainMaGeModel(PyTorchFLModel):
         self.validate_with_fine_grained_dice = validate_with_fine_grained_dice
         
         ############### CHOOSING THE LOSS FUNCTION ###################
-        if self.which_loss == 'dc':
-            self.loss_fn  = MCD_loss
-        elif self.which_loss == 'dcce':
+
+        # old dc is now dice_loss_skipping_first_channel
+
+        if self.which_loss == 'dcce':
             self.loss_fn  = DCCE
         elif self.which_loss == 'ce':
             self.loss_fn = CE
@@ -172,7 +173,13 @@ class BrainMaGeModel(PyTorchFLModel):
         elif self.which_loss == 'crossentropy':
             self.loss_fn = crossentropy
         elif self.which_loss == 'background_dice_loss':
-            self.loss_fn = background_dice_loss 
+            self.loss_fn = background_dice_loss
+        elif self.which_loss == 'dice_loss_skipping_first_channel':
+            self.loss_fn = dice_loss_skipping_first_channel
+        elif self.which_loss == 'dice_loss_all_channels':
+            self.loss_fn = dice_loss_all_channels
+        elif self.which_loss == 'mirrored_brats_dice_loss':
+            self.loss_fn = mirrored_brats_dice_loss
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
