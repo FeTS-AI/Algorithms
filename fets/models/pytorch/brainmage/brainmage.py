@@ -38,7 +38,7 @@ from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
 from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
 from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
-from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirorred_brats_dice_loss
+from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirrored_brats_dice_loss
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
