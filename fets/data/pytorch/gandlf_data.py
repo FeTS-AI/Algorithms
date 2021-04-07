@@ -170,7 +170,7 @@ class GANDLFData(object):
         self.class_list = class_list
         self.n_classes = len(self.class_list)
         # There is an assumption of batch size of 1
-        self.training_batch_size = training_batch_size
+        self.batch_size = training_batch_size
         
         # augmentations apply only for the trianing loader
         self.train_augmentations = data_augmentation
@@ -602,7 +602,7 @@ class GANDLFData(object):
                                    preprocessing=self.preprocessing, 
                                    in_memory=self.in_memory)
         if train:
-            loader = DataLoader(data, batch_size=self.training_batch_size)
+            loader = DataLoader(data, batch_size=self.batch_size)
         else:
             loader = DataLoader(data, batch_size=1)
         
