@@ -3,7 +3,7 @@
 # TODO: Should the validation patch sampler be different from the training one?
 # FIXME: replace prints to stdout with logging.
 
-import os
+import os, pathlib
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
 import numpy as np
 import torch
@@ -538,8 +538,7 @@ class GANDLFData(object):
         self.lost_train_info_path = os.path.join(self.split_instance_dirpath, lost_train_info_fname)
         self.lost_val_info_path = os.path.join(self.split_instance_dirpath, lost_val_info_fname)
 
-        if not os.path.exists(split_info_dirpath):
-            os.mkdir(split_info_dirpath)
+        pathlib.Path(split_info_dirpath).mkdir(parents=True, exist_ok=True)
 
 
     def create_dataframe(self, uids, include_labels):
