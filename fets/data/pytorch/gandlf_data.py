@@ -94,7 +94,8 @@ def fpaths_to_uid(fpaths):
 class GANDLFData(object):
 
     def __init__(self, 
-                 data_path,
+                 data_path, 
+                 training_batch_size=1,
                  class_list=[0, 1, 2, 4], 
                  patch_sampler='uniform',       
                  psize=[128, 128, 128],
@@ -169,7 +170,7 @@ class GANDLFData(object):
         self.class_list = class_list
         self.n_classes = len(self.class_list)
         # There is an assumption of batch size of 1
-        self.batch_size = 1
+        self.training_batch_size = training_batch_size
         
         # augmentations apply only for the trianing loader
         self.train_augmentations = data_augmentation
@@ -600,7 +601,10 @@ class GANDLFData(object):
                                    augmentations=augmentations, 
                                    preprocessing=self.preprocessing, 
                                    in_memory=self.in_memory)
-        loader = DataLoader(data, batch_size=self.batch_size)
+        if train:
+            loader = DataLoader(data, batch_size=self.training_batch_size)
+        else:
+            loader = DataLoader(data, batch_size=1)
         
         companion_loader = None
         if train:
@@ -617,7 +621,7 @@ class GANDLFData(object):
                                                  train=False, 
                                                  augmentations=None, 
                                                  preprocessing=self.preprocessing)
-            companion_loader = DataLoader(companion_data, batch_size=self.batch_size)
+            companion_loader = DataLoader(companion_data, batch_size=1)
 
         return loader, companion_loader
 
