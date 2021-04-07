@@ -159,14 +159,18 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = CE
         elif self.which_loss == 'mse':
             self.loss_fn = MCD_MSE_loss
-        elif self.which_loss == 'bdl':
+        elif self.which_loss == 'brats_dice_loss':
             self.loss_fn = brats_dice_loss
-        elif self.which_loss == 'bdll':
+        elif self.which_loss == 'brats_dice_log_loss':
             self.loss_fn = brats_dice_log_loss
-        elif self.which_loss == 'bdlb':
+        elif self.which_loss == 'brats_dice_loss_w_background':
             self.loss_fn = brats_dice_loss_w_background
-        elif self.which_loss == 'bdlx':
+        elif self.which_loss == 'brats_dice_loss_w_crossentropy':
             self.loss_fn = brats_dice_loss_w_crossentropy
+        elif self.which_loss == 'crossentropy':
+            self.loss_fn = crossentropy
+        elif self.which_loss == 'background_dice':
+            self.loss_fn = background_dice_loss 
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
