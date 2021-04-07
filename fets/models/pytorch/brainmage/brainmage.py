@@ -171,7 +171,7 @@ class BrainMaGeModel(PyTorchFLModel):
             self.loss_fn = brats_dice_loss_w_crossentropy
         elif self.which_loss == 'crossentropy':
             self.loss_fn = crossentropy
-        elif self.which_loss == 'background_dice':
+        elif self.which_loss == 'background_dice_loss':
             self.loss_fn = background_dice_loss 
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
