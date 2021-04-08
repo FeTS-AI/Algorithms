@@ -278,7 +278,7 @@ def dice_loss(output, target, skip=[], channels_dim=1, **kwargs):
         if idx < 0 or idx >= output.shape[channels_dim]:
             raise ValueError('Skip channel out of range. Found skip idx: {} when channels_dim is {} and output shape is {}'.format(idx, channels_dim, output.shape))
     channels = []
-    for idx in range(len(output.shape[channels_dim])):
+    for idx in range(output.shape[channels_dim]):
         if idx not in skip:
             channels.append(idx)
 
