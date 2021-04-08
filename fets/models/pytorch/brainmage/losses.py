@@ -89,9 +89,9 @@ def clinical_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs
                                       **kwargs)
     
         # tumor core ('1'|'4', ie channels 1 or 3 based on known class_list)
-        output_channels_1_3 = torch.cat([output[:,1,:,:,:], output[:,3,:,:,:]], dim=1)
+        output_channels_1_3 = torch.cat([output[:,1:2,:,:,:], output[:,3:4,:,:,:]], dim=1)
         output_core = torch.max(output_channels_1_3,dim=1).values
-        target_channels_1_3 = torch.cat([target[:,1,:,:,:], target[:,3,:,:,:]],dim=1)
+        target_channels_1_3 = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
         target_core = torch.max(target_channels_1_3,dim=1).values
         dice_for_core = channel_dice(output=output_core, 
                                      target=target_core, 
