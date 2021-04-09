@@ -97,7 +97,9 @@ class BrainMaGeModel(PyTorchFLModel):
                  validate_without_patches = False,
                  validate_with_fine_grained_dice = True, 
                  torch_threads=None, 
-                 kmp_affinity=False,
+                 kmp_affinity=False, 
+                 loss_function_kwargs={}, 
+                 validation_function_kwargs={},
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
 
@@ -143,6 +145,9 @@ class BrainMaGeModel(PyTorchFLModel):
         self.which_model = self.__repr__()
         self.use_panalties = use_penalties
 
+        self.loss_function_kwargs = loss_function_kwargs
+        self.validation_function_kwargs = validation_function_kwargs
+
         # used only when using the gandlf_data object
         # (will we crop external zero-planes, infer, then pad output with zeros OR
         #  get outputs for multiple patches - fusing the outputs)
@@ -152,10 +157,13 @@ class BrainMaGeModel(PyTorchFLModel):
         # enhancing tumor, or to simply report the average of those
         self.validate_with_fine_grained_dice = validate_with_fine_grained_dice
         
-        ############### CHOOSING THE LOSS FUNCTION ###################
+        ############### CHOOSING THE LOSS AND VALIDATION FUNCTIONS ###################
+
+        # hard coded for now
+        #FIXME: Note dependency on this and loss_function_kwargs on total_valscore definition in validate method
+        self.validation_function = brats_dice
 
         # old dc is now dice_loss_skipping_first_channel
-
         if self.which_loss == 'dcce':
             self.loss_fn  = DCCE
         elif self.which_loss == 'ce':
@@ -372,7 +380,13 @@ class BrainMaGeModel(PyTorchFLModel):
 
 
                     # Computing the loss
-                    loss = self.loss_fn(output.float(), mask.float(), num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list, to_scalar=False)
+                    loss = self.loss_fn(output=output.float(), 
+                                        target=mask.float(), 
+                                        num_classes=self.label_channels, 
+                                        weights=self.dice_penalty_dict, 
+                                        class_list=self.data.class_list, 
+                                        to_scalar=False, 
+                                        **self.loss_function_kwargs)
 
                     # DEBUG
                     print("\nThis loss: ", loss)
@@ -407,7 +421,7 @@ class BrainMaGeModel(PyTorchFLModel):
         # dice results are dictionaries
         if self.validate_with_fine_grained_dice:
             # here keys will be: 'ET', 'WT', and 'TC'
-            total_dice = {'ET': 0, 'WT': 0, 'TC': 0}
+            total_valscore = {'ET': 0, 'WT': 0, 'TC': 0}
         else:
             # here we only have one key: 'AVG(ET,WT,TC)'
             total_dice = {'AVG(ET,WT,TC)': 0}
@@ -449,26 +463,26 @@ class BrainMaGeModel(PyTorchFLModel):
             if output.shape != mask.shape:
                 raise ValueError('Model output and ground truth mask are not the same shape.')
 
-            # FIXME: Restore the ability to handle binary classification (one channel output)
-            # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
-            current_dice = brats_dice(output=output.float(), 
-                                      target=mask.float(), 
-                                      class_list=self.data.class_list, 
-                                      fine_grained=self.validate_with_fine_grained_dice, 
-                                      to_scalar=True)
+            # FIXME: Create a more general losses.py module (with composability and aggregation)
+            current_valscore = self.validation_function(output=output.float(), 
+                                                        target=mask.float(), 
+                                                        class_list=self.data.class_list, 
+                                                        fine_grained=self.validate_with_fine_grained_dice, 
+                                                        to_scalar=True, 
+                                                        **self.validation_function_kwargs)
 
             # DEBUG
             print("\nThis validation dice: ", current_dice)
             print("")
 
             # the dice results here are dictionaries (sum up the totals)
-            for key in total_dice:
-                total_dice[key] = total_dice[key] + current_dice[key]
+            for key in total_valscore:
+                total_valscore[key] = total_valscore[key] + current_valscore[key]
                 
         #Computing the average dice for all values of total_dice dict
-        average_dice = {key: value/len(val_loader) for key, value in total_dice.items()}
+        average_valscore = {key: value/len(val_loader) for key, value in total_valscore.items()}
 
-        return average_dice
+        return average_valscore
 
 
     

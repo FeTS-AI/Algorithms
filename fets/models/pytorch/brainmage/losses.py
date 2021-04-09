@@ -46,31 +46,50 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
     # We detect two use_cases here, and force a change in the code when another is wanted.
     # In both cases, we rely on the order of class_list !!!
     if list(class_list) == [0, 1, 2, 4]:
-        alt_labels = False
+        labels = 'original'
     # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
-    elif list(class_list) == ['4', '1||2||4', '1||4']:
-        alt_labels = True
+    elif list(class_list) == ['4', '1||4', '1||2||4']:
+        labels = 'fused'
+    # In this case we track only enhancing tumor and tumor core.
+    elif list(class_list) == ['4', '1||4']:
+        labels = 'trimmed_fused'
     else:
         raise ValueError('No implementation for this model class_list: ', class_list)
 
-    if alt_labels:
+    if labels='trimmed_fused' or labels='fused':
 
-        # channel 0 because of known class_list when alt_labels is True
+        # channel 0 because of known class_list with (trimmed_)fused labels
         dice_for_enhancing = channel_dice(output=output[:,0,:,:,:], 
                                           target=target[:,0,:,:,:], 
                                           smooth=smooth, 
                                           **kwargs)
-        # channel 1 because of known class_list when alt_labels is True
-        dice_for_whole = channel_dice(output=output[:,1,:,:,:], 
+        # channel 1 because of known class_list with (trimmed_)fused labels
+        dice_for_core = channel_dice(output=output[:,1,:,:,:], 
                                       target=target[:,1,:,:,:], 
                                       smooth=smooth, 
                                       **kwargs)
-        # channel 2 because of known class_list when alt_labels is True
-        dice_for_core = channel_dice(output=output[:,2,:,:,:], 
-                                     target=target[:,2,:,:,:], 
-                                     smooth=smooth, 
-                                     **kwargs)
-    else:
+        if labels = 'fused':
+            # channel 2 because of known class_list with fused labels
+            dice_for_whole = channel_dice(output=output[:,2,:,:,:], 
+                                        target=target[:,2,:,:,:], 
+                                        smooth=smooth, 
+                                        **kwargs)
+        else:
+            # here labels='trimmed_fused' and the whole channel will be inferred from the others
+            output_enhancing = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
+            output_core = torch.max(target_channels_1_3,dim=1).values
+            WORKING HERE
+            output_whole = torch.max([output_enhancing, output_core], dim=1)
+
+            target_core = torch.max(target_channels_1_3,dim=1).values
+            target_channels_1_3 = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
+            
+                
+            dice_for_whole = channel_dice(output=output[:,2,:,:,:], 
+                                        target=target[:,2,:,:,:], 
+                                        smooth=smooth, 
+                                        **kwargs)
+    elif labels='original':
 
         # enhancing_tumor ('4': channel 3 based on known class_list)
         output_enhancing = output[:,3,:,:,:]
@@ -97,6 +116,10 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
                                      target=target_core, 
                                      smooth=smooth, 
                                      **kwargs)
+    else:
+        raise ValueError('Model class_list is not currently supported')
+
+
 
     return {'ET': dice_for_enhancing, 'WT': dice_for_whole, 'TC': dice_for_core}
 
