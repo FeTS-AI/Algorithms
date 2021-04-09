@@ -721,8 +721,9 @@ class GANDLFData(object):
         if self.class_list == [0, 1, 2 , 4]:
             # in this case, background is encoded in the first output channel
             output[:,0,:,:,:] = 1
-        elif not (set(self.class_list) == set(['4', '1||2||4', '1||4'])):
-            raise ValueError('Supporting class list of {} is not present.'.format(self.class_list))
+        elif self.class_list not in [['4', '1||4'], ['4', '1||4', '1||2||4']]
+           # for fused or trimmed_fused the background is 0 so already set, but otherwise we raise an exception
+           raise ValueError('Supporting class list of {} is not present.'.format(self.class_list))
   
         # write in non-background output using the output of cropped features
         output[:, :, small_idx_corner[0]:large_idx_corner[0],small_idx_corner[1]:large_idx_corner[1], small_idx_corner[2]:large_idx_corner[2]] = \
