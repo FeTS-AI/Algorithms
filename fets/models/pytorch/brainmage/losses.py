@@ -43,11 +43,11 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
     if output.shape[1] != len(class_list):
         raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
 
-    # We detect two use_cases here, and force a change in the code when another is wanted.
-    # In both cases, we rely on the order of class_list !!!
+    # We detect specific use_cases here, and force a change in the code when another is wanted.
+    # In all cases, we rely on the order of class_list !!!
     if list(class_list) == [0, 1, 2, 4]:
         labels = 'original'
-    # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
+    # In this case we track only enhancing tumor, tumor core, and whole tumor (no background class).
     elif list(class_list) == ['4', '1||4', '1||2||4']:
         labels = 'fused'
     # In this case we track only enhancing tumor and tumor core.
@@ -56,7 +56,7 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
     else:
         raise ValueError('No implementation for this model class_list: ', class_list)
 
-    if labels='trimmed_fused' or labels='fused':
+    if labels == 'trimmed_fused' or labels == 'fused':
 
         # channel 0 because of known class_list with (trimmed_)fused labels
         dice_for_enhancing = channel_dice(output=output[:,0,:,:,:], 
@@ -68,28 +68,22 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
                                       target=target[:,1,:,:,:], 
                                       smooth=smooth, 
                                       **kwargs)
-        if labels = 'fused':
+        if labels == 'fused':
             # channel 2 because of known class_list with fused labels
             dice_for_whole = channel_dice(output=output[:,2,:,:,:], 
                                         target=target[:,2,:,:,:], 
                                         smooth=smooth, 
                                         **kwargs)
         else:
-            # here labels='trimmed_fused' and the whole channel will be inferred from the others
-            output_enhancing = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
-            output_core = torch.max(target_channels_1_3,dim=1).values
-            WORKING HERE
-            output_whole = torch.max([output_enhancing, output_core], dim=1)
+            # here labels='trimmed_fused' and the whole channel 'sigmoid' will be inferred as max over enhancing and core channels
+            output_whole = torch.max(output, dim=1).values
+            target_whole = torch.max(target, dim=1).values
 
-            target_core = torch.max(target_channels_1_3,dim=1).values
-            target_channels_1_3 = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
-            
-                
-            dice_for_whole = channel_dice(output=output[:,2,:,:,:], 
-                                        target=target[:,2,:,:,:], 
-                                        smooth=smooth, 
-                                        **kwargs)
-    elif labels='original':
+            dice_for_whole = channel_dice(output=output_whole, 
+                                          target=target_whole, 
+                                          smooth=smooth, 
+                                          **kwargs)
+    elif labels == 'original':
 
         # enhancing_tumor ('4': channel 3 based on known class_list)
         output_enhancing = output[:,3,:,:,:]
@@ -208,11 +202,11 @@ def background_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
                             target=target[:,0,:,:,:], 
                             smooth=smooth, 
                             **kwargs)
-    # In this case background is identified via 1 - channel 1.
-    elif list(class_list) == ['4', '1||2||4', '1||4']:
+    # In this case background is identified via 1 - channel 2.
+    elif list(class_list) == ['4', '1||4', '1||2||4']:
 
-        dice = channel_dice(output=1-output[:,1,:,:,:], 
-                            target=1-target[:,1,:,:,:], 
+        dice = channel_dice(output=1-output[:,2,:,:,:], 
+                            target=1-target[:,2,:,:,:], 
                             smooth=smooth, 
                             **kwargs)
     else:
@@ -424,7 +418,7 @@ def crossentropy(output, target, class_list, **kwargs):
                                           class_list=class_list, 
                                           channel=1, 
                                           **kwargs)
-    elif list(class_list) == ['4', '1||2||4', '1||4']:
+    elif list(class_list) == ['4', '1||4', '1||2||4']:
         # here we have a cross-entropy associated to each task (classes relate to independent tasks)
         xent_sum_across_tasks = 0
         for channel in range(output.shape[class_channel]):
