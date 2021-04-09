@@ -133,13 +133,8 @@ class BrainMaGeModel(PyTorchFLModel):
 
         self.which_loss = loss_function
         self.opt = opt
-        # model parameters
-        if self.n_classes == 2:
-            self.label_channels = 1
-            # FIXME: Support binary classification
-            raise NotImplementedError('Model output handling not currently supported in this case.')
-        else:
-            self.label_channels = self.n_classes
+        #TODO: Binary classficition with one channel is currently not supported
+        self.label_channels = self.n_classes
         self.base_filters = base_filters
         self.smooth = smooth
         self.which_model = self.__repr__()
