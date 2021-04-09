@@ -467,7 +467,7 @@ class BrainMaGeModel(PyTorchFLModel):
                                                         **self.validation_function_kwargs)
 
             # DEBUG
-            print("\nThis validation dice: ", current_dice)
+            print("\nThis validation dice: ", current_valscore)
             print("")
 
             # the dice results here are dictionaries (sum up the totals)
