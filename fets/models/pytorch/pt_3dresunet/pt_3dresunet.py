@@ -51,7 +51,7 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.init_optimizer()
         
 
-    def init_network(self, device, print_model=False, final_layer_activation='softmax', sigmoid_input_multipler=1.0, **kwargs):
+    def init_network(self, device, print_model=False, final_layer_activation='softmax', sigmoid_input_multiplier=1.0, **kwargs):
         self.ins = in_conv(self.n_channels, self.base_filters, res=True)
         self.ds_0 = DownsamplingModule(self.base_filters, self.base_filters*2)
         self.en_1 = EncodingModule(self.base_filters*2, self.base_filters*2, res=True)
