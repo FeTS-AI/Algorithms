@@ -47,7 +47,7 @@ class PyTorch3DResUNet(BrainMaGeModel):
 
         self.init_network(device=self.device, 
                           final_layer_activation=final_layer_activation, 
-                          sigmoid_input_multipler=sigmoid_input_multiplier)
+                          sigmoid_input_multiplier=sigmoid_input_multiplier)
         self.init_optimizer()
         
 
