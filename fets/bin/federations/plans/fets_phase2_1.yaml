@@ -21,7 +21,7 @@ model_object_init:
     opt: adam
     use_penalties: False
     validate_with_fine_grained_dice: True
-    sigmoid_input_multiplier: 1.0
+    sigmoid_input_multiplier: 20.0
 
 collaborator_object_init:
   init_kwargs:
