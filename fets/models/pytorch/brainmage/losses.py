@@ -50,13 +50,10 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
     # In this case we track only enhancing tumor, tumor core, and whole tumor (no background class).
     elif list(class_list) == ['4', '1||4', '1||2||4']:
         labels = 'fused'
-    # In this case we track only enhancing tumor and tumor core.
-    elif list(class_list) == ['4', '1||4']:
-        labels = 'trimmed_fused'
     else:
         raise ValueError('No implementation for this model class_list: ', class_list)
 
-    if labels == 'trimmed_fused' or labels == 'fused':
+    if labels == 'fused':
 
         # channel 0 because of known class_list with (trimmed_)fused labels
         dice_for_enhancing = channel_dice(output=output[:,0,:,:,:], 
@@ -68,21 +65,11 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
                                       target=target[:,1,:,:,:], 
                                       smooth=smooth, 
                                       **kwargs)
-        if labels == 'fused':
-            # channel 2 because of known class_list with fused labels
-            dice_for_whole = channel_dice(output=output[:,2,:,:,:], 
-                                        target=target[:,2,:,:,:], 
-                                        smooth=smooth, 
-                                        **kwargs)
-        else:
-            # here labels='trimmed_fused' and the whole channel 'sigmoid' will be inferred as max over enhancing and core channels
-            output_whole = torch.max(output, dim=1).values
-            target_whole = torch.max(target, dim=1).values
-
-            dice_for_whole = channel_dice(output=output_whole, 
-                                          target=target_whole, 
-                                          smooth=smooth, 
-                                          **kwargs)
+        # channel 2 because of known class_list with fused labels
+        dice_for_whole = channel_dice(output=output[:,2,:,:,:], 
+                                    target=target[:,2,:,:,:], 
+                                    smooth=smooth, 
+                                    **kwargs)
     elif labels == 'original':
 
         # enhancing_tumor ('4': channel 3 based on known class_list)

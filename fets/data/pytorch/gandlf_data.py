@@ -721,7 +721,7 @@ class GANDLFData(object):
         if self.class_list == [0, 1, 2 , 4]:
             # in this case, background is encoded in the first output channel
             output[:,0,:,:,:] = 1
-        elif self.class_list not in [['4', '1||4'], ['4', '1||4', '1||2||4']]:
+        elif self.class_list != ['4', '1||4', '1||2||4']:
            # for fused or trimmed_fused the background is 0 so already set, but otherwise we raise an exception
            raise ValueError('Supporting class list of {} is not present.'.format(self.class_list))
   

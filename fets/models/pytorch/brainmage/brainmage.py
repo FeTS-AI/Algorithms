@@ -301,7 +301,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
         with torch.no_grad():
             features = features.to(device)
-            output = self(features.float())
+            output = self(features)
             output = output.cpu()
         return output
 
@@ -355,37 +355,28 @@ class BrainMaGeModel(PyTorchFLModel):
                         mask = subject['gt']
                     # this is when we are using gandlf loader   
                     else:
-                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                         mask = subject['label'][torchio.DATA]
 
-                    mask = one_hot(mask, self.data.class_list)
+                    mask = one_hot(mask, self.data.class_list).float()
                         
                     # Loading features into device
-                    features, mask = features.float().to(device), mask.float().to(device)
-                    # TODO: Variable class is deprecated - parameters to be given are the tensor, whether it requires grad and the function that created it   
-                    # features, mask = Variable(features, requires_grad = True), Variable(mask, requires_grad = True)
+                    features, mask = features.to(device), mask.to(device)
+                    
                     # Making sure that the optimizer has been reset
                     self.optimizer.zero_grad()
-                    # Forward Propagation to get the output from the models
-                    
-                    # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
-                    #torch.cuda.empty_cache()
-                    
-                    output = self(features.float())
 
+                    # Forward Propagation to get the output from the models
+                    output = self(features)
 
                     # Computing the loss
-                    loss = self.loss_fn(output=output.float(), 
-                                        target=mask.float(), 
+                    loss = self.loss_fn(output=output, 
+                                        target=mask, 
                                         num_classes=self.label_channels, 
                                         weights=self.dice_penalty_dict, 
                                         class_list=self.data.class_list, 
                                         to_scalar=False, 
                                         **self.loss_function_kwargs)
-
-                    # DEBUG
-                    print("\nThis loss: ", loss)
-                    print("")
 
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
@@ -398,9 +389,6 @@ class BrainMaGeModel(PyTorchFLModel):
                         loss = loss.cpu().data.item()
                         total_loss += loss
                     self.lr_scheduler.step()
-
-                    # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
-                    #torch.cuda.empty_cache()
 
                     subject_num += 1
 
@@ -419,7 +407,7 @@ class BrainMaGeModel(PyTorchFLModel):
             total_valscore = {'ET': 0, 'WT': 0, 'TC': 0}
         else:
             # here we only have one key: 'AVG(ET,WT,TC)'
-            total_dice = {'AVG(ET,WT,TC)': 0}
+            total_valscore = {'AVG(ET,WT,TC)': 0}
         
         val_loader = self.data.get_val_loader()
 
@@ -439,7 +427,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
             # using the gandlf loader   
             else:
-                features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                 mask = subject['label'][torchio.DATA]
 
                 if self.validate_without_patches:
@@ -452,23 +440,19 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                 
             # one-hot encoding of ground truth
-            mask = one_hot(mask, self.data.class_list)
+            mask = one_hot(mask, self.data.class_list).float()
             
             # sanity check that the output and mask have the same shape
             if output.shape != mask.shape:
                 raise ValueError('Model output and ground truth mask are not the same shape.')
 
             # FIXME: Create a more general losses.py module (with composability and aggregation)
-            current_valscore = self.validation_function(output=output.float(), 
-                                                        target=mask.float(), 
+            current_valscore = self.validation_function(output=output, 
+                                                        target=mask, 
                                                         class_list=self.data.class_list, 
                                                         fine_grained=self.validate_with_fine_grained_dice, 
                                                         to_scalar=True, 
                                                         **self.validation_function_kwargs)
-
-            # DEBUG
-            print("\nThis validation dice: ", current_valscore)
-            print("")
 
             # the dice results here are dictionaries (sum up the totals)
             for key in total_valscore:
