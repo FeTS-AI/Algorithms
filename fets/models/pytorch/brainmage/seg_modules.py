@@ -389,7 +389,8 @@ class out_conv(nn.Module):
                  inst_norm_affine=True, 
                  res=True, 
                  lrelu_inplace=True, 
-                 activation='softmax'):
+                 activation='softmax', 
+                 sigmoid_input_multiplier=1.0):
         """[The Out convolution module to learn the information and use later]
         
         [This function will create the Learning convolutions]
@@ -409,10 +410,15 @@ class out_conv(nn.Module):
             lrelu_inplace {bool} -- [To update conv outputs with lrelu outputs] 
                                     (default: {True})
             activation {str} -- the activation function to apply to logits (default: 'softmax')
+            sigmoid_input_multiplier -- multiplier on input to the sigmoid activation if used
         """
         nn.Module.__init__(self)
         self.lrelu_inplace = lrelu_inplace
         self.activation = activation
+
+        print("\nout_conv will be using sigmoid_input_multiplier: ", sigmoid_input_multiplier)
+        print("")
+        self.sigmoid_input_multiplier = sigmoid_input_multiplier
         self.inst_norm_affine = inst_norm_affine
         self.conv_bias = conv_bias
         self.leakiness = leakiness
@@ -458,7 +464,7 @@ class out_conv(nn.Module):
         if self.activation == 'softmax':
             x = F.softmax(x,dim=1)
         elif self.activation == 'sigmoid':
-            x = torch.sigmoid(x)
+            x = torch.sigmoid(self.sigmoid_input_multiplier * x)
         else:
             raise ValueError('Currently only softmax and sigmoid activations are supported.')
         return x
@@ -490,7 +496,7 @@ class InceptionModule(nn.Module):
         self.conv_1x1_final = nn.Conv3d(output_channels,output_channels,kernel_size = 1, stride = 1, padding=0,bias = self.conv_bias)
         
     def forward(self,x):
-        output_channels = self.output_channels
+        # output_channels = self.output_channels
         if self.res == True:
             skip = x
         x1 = F.leaky_relu(self.inst_norm(self.conv_1x1(x)),negative_slope = self.leakiness,inplace = self.lrelu_inplace)

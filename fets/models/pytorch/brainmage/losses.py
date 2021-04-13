@@ -43,34 +43,34 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
     if output.shape[1] != len(class_list):
         raise ValueError('The idx=1 channel of output (and target) should enumerate classes, but output shape is {} and there are {} classes.'.format(output.shape, len(class_list)))
 
-    # We detect two use_cases here, and force a change in the code when another is wanted.
-    # In both cases, we rely on the order of class_list !!!
+    # We detect specific use_cases here, and force a change in the code when another is wanted.
+    # In all cases, we rely on the order of class_list !!!
     if list(class_list) == [0, 1, 2, 4]:
-        alt_labels = False
-    # In this case we track only enhancing tumor, whole tumor, and tumor core (no background class).
-    elif list(class_list) == ['4', '1||2||4', '1||4']:
-        alt_labels = True
+        labels = 'original'
+    # In this case we track only enhancing tumor, tumor core, and whole tumor (no background class).
+    elif list(class_list) == ['4', '1||4', '1||2||4']:
+        labels = 'fused'
     else:
         raise ValueError('No implementation for this model class_list: ', class_list)
 
-    if alt_labels:
+    if labels == 'fused':
 
-        # channel 0 because of known class_list when alt_labels is True
+        # channel 0 because of known class_list with (trimmed_)fused labels
         dice_for_enhancing = channel_dice(output=output[:,0,:,:,:], 
                                           target=target[:,0,:,:,:], 
                                           smooth=smooth, 
                                           **kwargs)
-        # channel 1 because of known class_list when alt_labels is True
-        dice_for_whole = channel_dice(output=output[:,1,:,:,:], 
+        # channel 1 because of known class_list with (trimmed_)fused labels
+        dice_for_core = channel_dice(output=output[:,1,:,:,:], 
                                       target=target[:,1,:,:,:], 
                                       smooth=smooth, 
                                       **kwargs)
-        # channel 2 because of known class_list when alt_labels is True
-        dice_for_core = channel_dice(output=output[:,2,:,:,:], 
-                                     target=target[:,2,:,:,:], 
-                                     smooth=smooth, 
-                                     **kwargs)
-    else:
+        # channel 2 because of known class_list with fused labels
+        dice_for_whole = channel_dice(output=output[:,2,:,:,:], 
+                                    target=target[:,2,:,:,:], 
+                                    smooth=smooth, 
+                                    **kwargs)
+    elif labels == 'original':
 
         # enhancing_tumor ('4': channel 3 based on known class_list)
         output_enhancing = output[:,3,:,:,:]
@@ -89,14 +89,18 @@ def brats_dice_fine_grained(output, target, class_list, smooth=1e-7, **kwargs):
                                       **kwargs)
     
         # tumor core ('1'|'4', ie channels 1 or 3 based on known class_list)
-        output_channels_1_3 = torch.cat([output[:,1,:,:,:], output[:,3,:,:,:]], dim=1)
+        output_channels_1_3 = torch.cat([output[:,1:2,:,:,:], output[:,3:4,:,:,:]], dim=1)
         output_core = torch.max(output_channels_1_3,dim=1).values
-        target_channels_1_3 = torch.cat([target[:,1,:,:,:], target[:,3,:,:,:]],dim=1)
+        target_channels_1_3 = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
         target_core = torch.max(target_channels_1_3,dim=1).values
         dice_for_core = channel_dice(output=output_core, 
                                      target=target_core, 
                                      smooth=smooth, 
                                      **kwargs)
+    else:
+        raise ValueError('Model class_list is not currently supported')
+
+
 
     return {'ET': dice_for_enhancing, 'WT': dice_for_whole, 'TC': dice_for_core}
 
@@ -110,6 +114,15 @@ def brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
                            **kwargs)
     return 1 - clin_dice['AVG(ET,WT,TC)']
 
+
+def mirrored_brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    return brats_dice_loss(output=output,
+                           target=target, 
+                           class_list=class_list, 
+                           smooth=smooth, 
+                           mirrored=True, 
+                           **kwargs)
+    
 
 def brats_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
     clin_dice = brats_dice(output=output, 
@@ -176,11 +189,11 @@ def background_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
                             target=target[:,0,:,:,:], 
                             smooth=smooth, 
                             **kwargs)
-    # In this case background is identified via 1 - channel 1.
-    elif list(class_list) == ['4', '1||2||4', '1||4']:
+    # In this case background is identified via 1 - channel 2.
+    elif list(class_list) == ['4', '1||4', '1||2||4']:
 
-        dice = channel_dice(output=1-output[:,1,:,:,:], 
-                            target=1-target[:,1,:,:,:], 
+        dice = channel_dice(output=1-output[:,2,:,:,:], 
+                            target=1-target[:,2,:,:,:], 
                             smooth=smooth, 
                             **kwargs)
     else:
@@ -201,15 +214,30 @@ def channel_log_dice_loss(output, target, smooth=1e-7, **kwargs):
                                 smooth=smooth, 
                                 **kwargs))
 
-def channel_dice(output, target, smooth=1e-7, to_scalar=False, **kwargs):
-    output = output.contiguous().view(-1)
-    target = target.contiguous().view(-1)
-    intersection = (output * target).sum()
-    dice = (2. * intersection + smooth) / (output.sum() + target.sum() + smooth)
-    if to_scalar: 
-        return dice.cpu().data.item()
+def channel_dice(output, target, smooth=1e-7, to_scalar=False, mirrored=False, **kwargs):
+    def straight_dice(output, target, smooth, to_scalar, **kwargs):
+        output = output.contiguous().view(-1)
+        target = target.contiguous().view(-1)
+        intersection = (output * target).sum()
+        dice = (2. * intersection + smooth) / (output.sum() + target.sum() + smooth)
+        if to_scalar: 
+            return dice.cpu().data.item()
+        else:
+            return dice 
+    dice = straight_dice(output=output,
+                         target=target, 
+                         smooth=smooth, 
+                         to_scalar=to_scalar, 
+                         **kwargs)
+    if not mirrored:
+        return dice
     else:
-        return dice 
+        dice_on_mirror = straight_dice(output=1 - output,
+                                       target=1 - target, 
+                                       smooth=smooth, 
+                                       to_scalar=to_scalar, 
+                                       **kwargs)
+        return (dice + dice_on_mirror)/2
 
 def average_dice_over_channels(output, target, binary_classification, **kwargs):
     if not binary_classification:
@@ -224,26 +252,54 @@ def average_dice_over_channels(output, target, binary_classification, **kwargs):
         total_dice += channel_dice(output=output_channel, target=target_channel, **kwargs)
     return total_dice / nb_nonbackground_classes
 
-def ave_loss_over_channels(output, target, binary_classification, channel_loss_fn, **kwargs):
-    if not binary_classification:
-        # we will not count the background class (here in dim=0 of axis=1)
-        output = output[:,1:,:,:,:]
-        target = target[:,1:,:,:,:]
+def ave_loss_over_channels(output, target, channels, channel_loss_fn, channels_dim=1, **kwargs):
+
+    # sanity check
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape)) 
+    
     total_dice = 0
-    nb_nonbackground_classes = output.shape[1]
-    for dim in range(nb_nonbackground_classes):
-        output_channel = output[:,dim,:,:,:]
-        target_channel = target[:,dim,:,:,:]
+    nb_classes = output.shape[channels_dim]
+    if np.amin(channels) < 0 or np.amax(channels) >= nb_classes:
+        raise ValueError('Provided channels: {} are not consistent with the output (target) shape: {} and channels_dim of {}'.format(channels, output.shape, channels_dim))
+    slices = [slice(None) for _ in output.shape] 
+    for idx in channels:
+        slices[channels_dim] = idx
+        output_channel = output[tuple(slices)]
+        target_channel = target[tuple(slices)]
         total_dice += channel_loss_fn(output=output_channel, target=target_channel, **kwargs)
-    return total_dice / nb_nonbackground_classes
+    return total_dice / len(channels)
 
 
-def dice_loss(output, target, binary_classification, **kwargs):
+def dice_loss(output, target, skip=[], channels_dim=1, **kwargs):
+    # skip is a list of channels to skip in the average
+
+    # sanity check
+    if output.shape != target.shape:
+        raise ValueError('Shapes of output {} and target {} do not match.'.format(output.shape, target.shape))
+
+    for idx in skip:
+        if idx < 0 or idx >= output.shape[channels_dim]:
+            raise ValueError('Skip channel out of range. Found skip idx: {} when channels_dim is {} and output shape is {}'.format(idx, channels_dim, output.shape))
+    channels = []
+    for idx in range(output.shape[channels_dim]):
+        if idx not in skip:
+            channels.append(idx)
+
     return ave_loss_over_channels(output=output, 
                                   target=target, 
-                                  binary_classification=binary_classification, 
-                                  channel_loss_fn=channel_dice_loss, 
+                                  channels=channels, 
+                                  channel_loss_fn=channel_dice_loss,
+                                  channels_dim=channels_dim, 
                                   **kwargs)
+
+
+def dice_loss_skipping_first_channel(output, target, **kwargs):
+    return dice_loss(output=output, target=target, skip=[0], **kwargs)
+
+
+def dice_loss_all_channels(output, target, **kwargs):
+    return dice_loss(output=output, target=target, **kwargs)
 
 
 # FIXME: implement below
@@ -349,7 +405,7 @@ def crossentropy(output, target, class_list, **kwargs):
                                           class_list=class_list, 
                                           channel=1, 
                                           **kwargs)
-    elif list(class_list) == ['4', '1||2||4', '1||4']:
+    elif list(class_list) == ['4', '1||4', '1||2||4']:
         # here we have a cross-entropy associated to each task (classes relate to independent tasks)
         xent_sum_across_tasks = 0
         for channel in range(output.shape[class_channel]):

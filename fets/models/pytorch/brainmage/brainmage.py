@@ -38,7 +38,7 @@ from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
 from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
 from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
-from .losses import background_dice_loss, crossentropy
+from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirrored_brats_dice_loss
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -97,7 +97,9 @@ class BrainMaGeModel(PyTorchFLModel):
                  validate_without_patches = False,
                  validate_with_fine_grained_dice = True, 
                  torch_threads=None, 
-                 kmp_affinity=False,
+                 kmp_affinity=False, 
+                 loss_function_kwargs={}, 
+                 validation_function_kwargs={},
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
 
@@ -131,17 +133,15 @@ class BrainMaGeModel(PyTorchFLModel):
 
         self.which_loss = loss_function
         self.opt = opt
-        # model parameters
-        if self.n_classes == 2:
-            self.label_channels = 1
-            # FIXME: Support binary classification
-            raise NotImplementedError('Model output handling not currently supported in this case.')
-        else:
-            self.label_channels = self.n_classes
+        #TODO: Binary classficition with one channel is currently not supported
+        self.label_channels = self.n_classes
         self.base_filters = base_filters
         self.smooth = smooth
         self.which_model = self.__repr__()
         self.use_panalties = use_penalties
+
+        self.loss_function_kwargs = loss_function_kwargs
+        self.validation_function_kwargs = validation_function_kwargs
 
         # used only when using the gandlf_data object
         # (will we crop external zero-planes, infer, then pad output with zeros OR
@@ -152,10 +152,14 @@ class BrainMaGeModel(PyTorchFLModel):
         # enhancing tumor, or to simply report the average of those
         self.validate_with_fine_grained_dice = validate_with_fine_grained_dice
         
-        ############### CHOOSING THE LOSS FUNCTION ###################
-        if self.which_loss == 'dc':
-            self.loss_fn  = MCD_loss
-        elif self.which_loss == 'dcce':
+        ############### CHOOSING THE LOSS AND VALIDATION FUNCTIONS ###################
+
+        # hard coded for now
+        #FIXME: Note dependency on this and loss_function_kwargs on total_valscore definition in validate method
+        self.validation_function = brats_dice
+
+        # old dc is now dice_loss_skipping_first_channel
+        if self.which_loss == 'dcce':
             self.loss_fn  = DCCE
         elif self.which_loss == 'ce':
             self.loss_fn = CE
@@ -172,7 +176,13 @@ class BrainMaGeModel(PyTorchFLModel):
         elif self.which_loss == 'crossentropy':
             self.loss_fn = crossentropy
         elif self.which_loss == 'background_dice_loss':
-            self.loss_fn = background_dice_loss 
+            self.loss_fn = background_dice_loss
+        elif self.which_loss == 'dice_loss_skipping_first_channel':
+            self.loss_fn = dice_loss_skipping_first_channel
+        elif self.which_loss == 'dice_loss_all_channels':
+            self.loss_fn = dice_loss_all_channels
+        elif self.which_loss == 'mirrored_brats_dice_loss':
+            self.loss_fn = mirrored_brats_dice_loss
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
@@ -291,7 +301,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
         with torch.no_grad():
             features = features.to(device)
-            output = self(features.float())
+            output = self(features)
             output = output.cpu()
         return output
 
@@ -345,31 +355,28 @@ class BrainMaGeModel(PyTorchFLModel):
                         mask = subject['gt']
                     # this is when we are using gandlf loader   
                     else:
-                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                         mask = subject['label'][torchio.DATA]
 
-                    mask = one_hot(mask, self.data.class_list)
+                    mask = one_hot(mask, self.data.class_list).float()
                         
                     # Loading features into device
-                    features, mask = features.float().to(device), mask.float().to(device)
-                    # TODO: Variable class is deprecated - parameters to be given are the tensor, whether it requires grad and the function that created it   
-                    # features, mask = Variable(features, requires_grad = True), Variable(mask, requires_grad = True)
+                    features, mask = features.to(device), mask.to(device)
+                    
                     # Making sure that the optimizer has been reset
                     self.optimizer.zero_grad()
-                    # Forward Propagation to get the output from the models
-                    
-                    # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
-                    #torch.cuda.empty_cache()
-                    
-                    output = self(features.float())
 
+                    # Forward Propagation to get the output from the models
+                    output = self(features)
 
                     # Computing the loss
-                    loss = self.loss_fn(output.float(), mask.float(), num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list, to_scalar=False)
-
-                    # DEBUG
-                    print("\nThis loss: ", loss)
-                    print("")
+                    loss = self.loss_fn(output=output, 
+                                        target=mask, 
+                                        num_classes=self.label_channels, 
+                                        weights=self.dice_penalty_dict, 
+                                        class_list=self.data.class_list, 
+                                        to_scalar=False, 
+                                        **self.loss_function_kwargs)
 
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
@@ -382,9 +389,6 @@ class BrainMaGeModel(PyTorchFLModel):
                         loss = loss.cpu().data.item()
                         total_loss += loss
                     self.lr_scheduler.step()
-
-                    # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
-                    #torch.cuda.empty_cache()
 
                     subject_num += 1
 
@@ -400,10 +404,10 @@ class BrainMaGeModel(PyTorchFLModel):
         # dice results are dictionaries
         if self.validate_with_fine_grained_dice:
             # here keys will be: 'ET', 'WT', and 'TC'
-            total_dice = {'ET': 0, 'WT': 0, 'TC': 0}
+            total_valscore = {'ET': 0, 'WT': 0, 'TC': 0}
         else:
             # here we only have one key: 'AVG(ET,WT,TC)'
-            total_dice = {'AVG(ET,WT,TC)': 0}
+            total_valscore = {'AVG(ET,WT,TC)': 0}
         
         val_loader = self.data.get_val_loader()
 
@@ -423,7 +427,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
             # using the gandlf loader   
             else:
-                features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                 mask = subject['label'][torchio.DATA]
 
                 if self.validate_without_patches:
@@ -436,32 +440,28 @@ class BrainMaGeModel(PyTorchFLModel):
                     
                 
             # one-hot encoding of ground truth
-            mask = one_hot(mask, self.data.class_list)
+            mask = one_hot(mask, self.data.class_list).float()
             
             # sanity check that the output and mask have the same shape
             if output.shape != mask.shape:
                 raise ValueError('Model output and ground truth mask are not the same shape.')
 
-            # FIXME: Restore the ability to handle binary classification (one channel output)
-            # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
-            current_dice = brats_dice(output=output.float(), 
-                                      target=mask.float(), 
-                                      class_list=self.data.class_list, 
-                                      fine_grained=self.validate_with_fine_grained_dice, 
-                                      to_scalar=True)
-
-            # DEBUG
-            print("\nThis validation dice: ", current_dice)
-            print("")
+            # FIXME: Create a more general losses.py module (with composability and aggregation)
+            current_valscore = self.validation_function(output=output, 
+                                                        target=mask, 
+                                                        class_list=self.data.class_list, 
+                                                        fine_grained=self.validate_with_fine_grained_dice, 
+                                                        to_scalar=True, 
+                                                        **self.validation_function_kwargs)
 
             # the dice results here are dictionaries (sum up the totals)
-            for key in total_dice:
-                total_dice[key] = total_dice[key] + current_dice[key]
+            for key in total_valscore:
+                total_valscore[key] = total_valscore[key] + current_valscore[key]
                 
         #Computing the average dice for all values of total_dice dict
-        average_dice = {key: value/len(val_loader) for key, value in total_dice.items()}
+        average_valscore = {key: value/len(val_loader) for key, value in total_valscore.items()}
 
-        return average_dice
+        return average_valscore
 
 
     

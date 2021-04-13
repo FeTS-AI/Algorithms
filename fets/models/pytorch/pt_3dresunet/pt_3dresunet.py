@@ -31,12 +31,12 @@ and some other hyperparameters, which remain constant all the modules. For more 
 """
 
 class PyTorch3DResUNet(BrainMaGeModel):
-    def __init__(self, final_layer_activation=None, **kwargs):
+    def __init__(self, final_layer_activation=None, sigmoid_input_multiplier=1.0, **kwargs):
         super(PyTorch3DResUNet, self).__init__(**kwargs)
 
         if final_layer_activation is None:
             # inferring from data object class_list attribute
-            if (self.data.class_list == [0, 1]) or (self.data.class_list == ['4', '1||2||4', '1||4']):
+            if (self.data.class_list == [0, 1]) or (self.data.class_list == ['4', '1||4', '1||2||4']) or (self.data.class_list == ['4', '1||4']):
                 # single output channel or multi-label
                 final_layer_activation = 'sigmoid'
             elif self.data.class_list == [0, 1, 2, 4]:
@@ -45,11 +45,13 @@ class PyTorch3DResUNet(BrainMaGeModel):
             else:
                 raise ValueError('No final_layer_activation provided and not able to infer the value needed.')      
 
-        self.init_network(device=self.device, final_layer_activation=final_layer_activation)
+        self.init_network(device=self.device, 
+                          final_layer_activation=final_layer_activation, 
+                          sigmoid_input_multiplier=sigmoid_input_multiplier)
         self.init_optimizer()
         
 
-    def init_network(self, device, print_model=False, final_layer_activation='softmax', **kwargs):
+    def init_network(self, device, print_model=False, final_layer_activation='softmax', sigmoid_input_multiplier=1.0, **kwargs):
         self.ins = in_conv(self.n_channels, self.base_filters, res=True)
         self.ds_0 = DownsamplingModule(self.base_filters, self.base_filters*2)
         self.en_1 = EncodingModule(self.base_filters*2, self.base_filters*2, res=True)
@@ -69,7 +71,8 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.out = out_conv(self.base_filters*2, 
                             self.label_channels, 
                             res=True, 
-                            activation=final_layer_activation)
+                            activation=final_layer_activation, 
+                            sigmoid_input_multiplier=sigmoid_input_multiplier)
 
         if print_model:
             print(self)
@@ -78,6 +81,8 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.to(device)
 
     def forward(self, x):
+        # normalize input
+        x = (x - torch.mean(x)) / torch.std(x)
         x1 = self.ins(x)
         x2 = self.ds_0(x1)
         x2 = self.en_1(x2)
