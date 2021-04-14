@@ -13,6 +13,7 @@
  
 import numpy as np
 import torch
+from medpy.metric.binary import hd95
 
 
 def brats_dice(output, target, class_list, fine_grained=True, smooth=1e-7, **kwargs):
@@ -213,6 +214,12 @@ def channel_log_dice_loss(output, target, smooth=1e-7, **kwargs):
                                 target=target, 
                                 smooth=smooth, 
                                 **kwargs))
+
+def channel_hausdorff(output, target, **kwargs):
+    '''
+    output, target are float values and contain 0s and 1s
+    '''
+    return hd95(output, target)
 
 def channel_dice(output, target, smooth=1e-7, to_scalar=False, mirrored=False, **kwargs):
     def straight_dice(output, target, smooth, to_scalar, **kwargs):
