@@ -39,6 +39,7 @@ from openfl.models.pytorch import PyTorchFLModel
 from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
 from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
 from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirrored_brats_dice_loss
+from .losses import fets_phase2_validatation
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -86,7 +87,8 @@ class BrainMaGeModel(PyTorchFLModel):
                  min_learning_rate, 
                  max_learning_rate,
                  learning_rate_cycles_per_epoch,
-                 loss_function, 
+                 loss_function,
+                 validation_function, 
                  opt, 
                  device='cpu',
                  n_classes=4,
@@ -132,6 +134,7 @@ class BrainMaGeModel(PyTorchFLModel):
         self.learning_rate_cycles_per_epoch = learning_rate_cycles_per_epoch
 
         self.which_loss = loss_function
+        self.which_validation = validation_function
         self.opt = opt
         #TODO: Binary classficition with one channel is currently not supported
         self.label_channels = self.n_classes
@@ -156,16 +159,32 @@ class BrainMaGeModel(PyTorchFLModel):
 
         # hard coded for now
         #FIXME: Note dependency on this and loss_function_kwargs on total_valscore definition in validate method
-        self.validation_function = brats_dice
+        # I try to track this with self.validation_output_keys (below)
+        if self.which_validation == 'brats_dice':
+            self.validation_function = brats_dice
+            if self.validate_with_fine_grained_dice:
+                self.validation_output_keys = ['float_DICE_ET', 
+                                               'float_DICE_TC', 
+                                               'float_DICE_WT']
+            else:
+                self.validation_output_keys = ['float_DICE_AVG(ET,TC,WT)']
+        elif self.which_validation == 'fets_phase2_validatation':
+            self.validation_function = fets_phase2_validatation
+            self.validation_output_keys = ['float_DICE_ET', 
+                                           'float_DICE_TC', 
+                                           'float_DICE_WT', 
+                                           'binary_Hausdorff95_ET', 
+                                           'binary_Hausdorff95_TC', 
+                                           'binary_Hausdorff95_WT', 
+                                           'binary_Sensitivity_ET', 
+                                           'binary_Sensitivity_TC', 
+                                           'binary_Sensitivity_WT', 
+                                           'binary_Specificity_ET', 
+                                           'binary_Specificity_TC', 
+                                           'binary_Specificity_WT']
 
         # old dc is now dice_loss_skipping_first_channel
-        if self.which_loss == 'dcce':
-            self.loss_fn  = DCCE
-        elif self.which_loss == 'ce':
-            self.loss_fn = CE
-        elif self.which_loss == 'mse':
-            self.loss_fn = MCD_MSE_loss
-        elif self.which_loss == 'brats_dice_loss':
+        if self.which_loss == 'brats_dice_loss':
             self.loss_fn = brats_dice_loss
         elif self.which_loss == 'brats_dice_log_loss':
             self.loss_fn = brats_dice_log_loss
@@ -401,13 +420,8 @@ class BrainMaGeModel(PyTorchFLModel):
 
     def validate(self, use_tqdm=False):
         
-        # dice results are dictionaries
-        if self.validate_with_fine_grained_dice:
-            # here keys will be: 'ET', 'WT', and 'TC'
-            total_valscore = {'ET': 0, 'WT': 0, 'TC': 0}
-        else:
-            # here we only have one key: 'AVG(ET,WT,TC)'
-            total_valscore = {'AVG(ET,WT,TC)': 0}
+        # dice results are dictionaries (keys provided by self.validation_output_keys)
+        total_valscore = {key: 0 for key in self.validation_output_keys}
         
         val_loader = self.data.get_val_loader()
 
@@ -455,7 +469,7 @@ class BrainMaGeModel(PyTorchFLModel):
                                                         **self.validation_function_kwargs)
 
             # the dice results here are dictionaries (sum up the totals)
-            for key in total_valscore:
+            for key in self.validation_output_keys:
                 total_valscore[key] = total_valscore[key] + current_valscore[key]
                 
         #Computing the average dice for all values of total_dice dict

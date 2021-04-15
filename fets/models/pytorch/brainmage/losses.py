@@ -34,6 +34,18 @@ def check_are_binary(output, target):
         else:
             raise ValueError('The provided output is not binary.')
 
+def check_are_binary_numpy(output, target):
+    binary_output = np.all(np.unique(output) == np.array([1.0, 0.0]))
+    binary_target = np.all(np.unique(target) == np.array([1.0, 0.0]))
+    if binary_output:
+        if not binary_target:
+            raise ValueError('The provided target is not binary.')
+    else:
+        if not binary_target:
+            raise ValueError('Both the provided output and target are not binary.')
+        else:
+            raise ValueError('The provided output is not binary.')
+
 
 def check_shapes_same(output, target):
     if output.shape != target.shape:
@@ -152,6 +164,7 @@ def brats_labels(output, target, class_list, binarized):
     # these can be binary (per-voxel) decisions (if binarized==True) or float valued
     
     if binarized:
+        tag='float_'
         output_enhancing = binarize_output(output=output, 
                                            class_list=class_list, 
                                            modality='ET')
@@ -168,7 +181,7 @@ def brats_labels(output, target, class_list, binarized):
         target_whole = binarize_label(label=target, modality='WT')
        
     else:
-
+        tag='binary_'
         # We detect specific use_cases here, and force a change in the code when another is wanted.
         # In all cases, we rely on the order of class_list !!!
         if list(class_list) == [0, 1, 2, 4]:
@@ -204,9 +217,12 @@ def brats_labels(output, target, class_list, binarized):
         else:
             raise ValueError('No implementation for this model class_list: ', class_list)
 
-    return {'ET': (output_enhancing, target_enhancing), 
-            'TC': (output_core, target_core), 
-            'WT': (output_whole, target_whole)}
+    return {'outputs': {'ET': output_enhancing, 
+                        'TC': output_core,
+                        'WT': output_whole},
+            'targets': {'ET': target_enhancing, 
+                        'TC': target_core, 
+                        'WT': target_whole}}, tag
 
 
 ######################################################
@@ -221,77 +237,151 @@ def fets_phase2_validatation(output, target, class_list, **kwargs):
 
     
     # get the binarized and non-binarized versions of the outputs and labels
-    brats_val_data_non_binary = brats_labels(output=output, 
-                                             target=target, 
-                                             class_list=class_list, 
-                                             binarized=False, 
-                                             **kwargs)
-    brats_val_data_binary = brats_labels(output=output, 
-                                         target=target, 
-                                         class_list=class_list, 
-                                         binarized=True, 
-                                         **kwargs)
+    brats_val_data_non_binary, binary_tag = brats_labels(output=output, 
+                                                         target=target, 
+                                                         class_list=class_list, 
+                                                         binarized=False, 
+                                                         **kwargs)
+    outputs_non_binary = brats_val_data_non_binary['outputs']
+    targets_non_binary = brats_val_data_non_binary['targets']
+
+
+    brats_val_data_binary, non_binary_tag = brats_labels(output=output, 
+                                                         target=target, 
+                                                         class_list=class_list, 
+                                                         binarized=True, 
+                                                         **kwargs)
+    outputs_binary = brats_val_data_binary['outputs']
+    targets_binary = brats_val_data_binary['targets']
 
     all_validation = {}
 
-                                            
-    all_validation.update(brats_dice(brats_val_data=brats_val_data_non_binary, 
+    # validation based on float outputs                                     
+    all_validation.update(brats_dice(output=outputs_non_binary,
+                                     target=targets_non_binary 
                                      fine_grained=True, 
-                                     tag='float_'
+                                     tag=non_binary_tag, 
+                                     data_already_processes=True,
                                      **kwargs))
-    all_validation.update()
     
-
-    
-    all_validation.update(brats_dice(brats_val_data=brats_val_data_binary, 
+    # validation based on binarized outputs
+    all_validation.update(brats_dice(output=outputs_binary,
+                                     target=targets_binary 
                                      fine_grained=True, 
-                                     tag='binary_'
+                                     tag=binary_tag
+                                     data_already_processes=True,
                                      **kwargs))
-    all_validation.update(brats_hausdorff(brats_val_data_binary, tag='binary_', **kwargs))
-    all_validation.update(brats_sensitivity(brats_val_data_binary, tag='binary_', **kwargs))
-    all_validation.update(brats_specificity(brats_val_data_binary, tag='binary_', **kwargs))
-    # WORKING HERE
-    raise NotImplementedError()
-
-
-def brats_sensitivity(brats_val_data, tag='', **kwargs):
+    all_validation.update(brats_hausdorff(output=outputs_binary,
+                                          target=targets_binary, 
+                                          tag=binary_tag, 
+                                          data_already_processes=True, 
+                                          **kwargs))
+    all_validation.update(brats_sensitivity(output=outputs_binary,
+                                            target=targets_binary, 
+                                            tag=binary_tag, 
+                                            data_already_processes=True, 
+                                            **kwargs))
+    all_validation.update(brats_specificity(output=outputs_binary,
+                                            target=targets_binary, 
+                                            tag=binary_tag, 
+                                            data_already_processes=True, 
+                                            **kwargs))
     
-    output_enhancing, target_enhancing = brats_val_data['ET'] 
-    output_core, target_core = brats_val_data['TC'] 
-    output_whole, target_whole = brats_val_data['WT']
+    return all_validation
+
+
+def brats_sensitivity(output, target, tag='', to_scalar=True, data_already_processed, **kwargs):
+    
+    if not data_already_processed:
+        # here we are being passed the raw output and target
+        brats_val_data = brats_labels(output=output, 
+                                    target=target, 
+                                    class_list=class_list, 
+                                    binarized=False, 
+                                    **kwargs)
+        outputs = brats_val_data['outputs']
+        targets = brats_val_data['targets']
+        if tag != '':
+            if tag != 'float_':
+                raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
+        else:
+            # overwriting default tag here
+            tag = 'float_'
+    else:
+        outputs = output
+        targets = target
+    
+    output_enhancing = outputs['ET'] 
+    target_enhancing = targets['ET']
+
+    output_core = outputs['TC'] 
+    target_core = targets['TC'] 
+
+    output_whole = outputs['WT'] 
+    target_whole = targets['WT']
 
     sensitivity_for_enhancing = channel_sensitivity(output=output_enhancing, 
-                                                    target=target_enhancing, 
+                                                    target=target_enhancing,
+                                                    to_scalar=to_scalar, 
                                                     **kwargs)
 
     sensitivity_for_core = channel_sensitivity(output=output_core, 
-                                               target=target_core, 
+                                               target=target_core,
+                                               to_scalar=to_scalar, 
                                                **kwargs)
 
     sensitivity_for_whole = channel_sensitivity(output=output_whole, 
-                                                target=target_whole, 
+                                                target=target_whole,
+                                                to_scalar=to_scalar, 
                                                 **kwargs)
 
     return {tag + 'Sensitivity_ET': sensitivity_for_enhancing, 
             tag + 'Sensitivity_TC': sensitivity_for_core, 
             tag + 'Sensitivity_WT': sensitivity_for_whole}
 
-def brats_specificity(brats_val_data, tag='', **kwargs):
+def brats_specificity(output, target, tag='', to_scalar=True, data_already_processed, **kwargs):
     
-    output_enhancing, target_enhancing = brats_val_data['ET'] 
-    output_core, target_core = brats_val_data['TC'] 
-    output_whole, target_whole = brats_val_data['WT']
+    if not data_already_processed:
+        # here we are being passed the raw output and target
+        brats_val_data = brats_labels(output=output, 
+                                    target=target, 
+                                    class_list=class_list, 
+                                    binarized=False, 
+                                    **kwargs)
+        outputs = brats_val_data['outputs']
+        targets = brats_val_data['targets']
+        if tag != '':
+            if tag != 'float_':
+                raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
+        else:
+            # overwriting default tag here
+            tag = 'float_'
+    else:
+        outputs = output
+        targets = target
+    
+    output_enhancing = outputs['ET'] 
+    target_enhancing = targets['ET']
+
+    output_core = outputs['TC'] 
+    target_core = targets['TC'] 
+
+    output_whole = outputs['WT'] 
+    target_whole = targets['WT']
 
     specificity_for_enhancing = channel_specificity(output=output_enhancing, 
-                                                    target=target_enhancing, 
+                                                    target=target_enhancing,
+                                                    to_scalar=to_scalar, 
                                                     **kwargs)
 
     specificity_for_core = channel_specificity(output=output_core, 
-                                               target=target_core, 
+                                               target=target_core,
+                                               to_scalar=to_scalar, 
                                                **kwargs)
 
     specificity_for_whole = channel_specificity(output=output_whole, 
-                                                target=target_whole, 
+                                                target=target_whole,
+                                                to_scalar=to_scalar, 
                                                 **kwargs)
 
     return {tag + 'Specificity_ET': specificity_for_enhancing, 
@@ -299,33 +389,96 @@ def brats_specificity(brats_val_data, tag='', **kwargs):
             tag + 'Specificity_WT': specificity_for_whole}
 
 
-def brats_hausdorff(brats_val_data, tag='', **kwargs):
+def brats_hausdorff(output, target, tag='', to_scalar=True, data_already_processed=False, **kwargs):
+
+    if not data_already_processed:
+        # here we are being passed the raw output and target
+        brats_val_data = brats_labels(output=output, 
+                                    target=target, 
+                                    class_list=class_list, 
+                                    binarized=False, 
+                                    **kwargs)
+        outputs = brats_val_data['outputs']
+        targets = brats_val_data['targets']
+        if tag != '':
+            if tag != 'float_':
+                raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
+        else:
+            # overwriting default tag here
+            tag = 'float_'
+    else:
+        outputs = output
+        targets = target
+
+    output_enhancing = outputs['ET'] 
+    target_enhancing = targets['ET']
+
+    output_core = outputs['TC'] 
+    target_core = targets['TC'] 
+
+    output_whole = outputs['WT'] 
+    target_whole = targets['WT']
+
+    if to_scalar:
+        # channel_hausdorff processes numpy arrays
+        output_enhancing, target_enhancing = output_enhancing.numpy(), target_enhancing.numpy()
+        output_core, target_core = output_core.numpy(), target_core.numpy() 
+        output_whole, target_whole = output_whole.numpy(), target_whole.numpy()
+    else:
+        # I don't believe converting to and from numpy to utilize the channel_hausdorff function can be tracked in the graph 
+        raise ValueError('Computing BraTS hausdorff for torch tensors in the compute graph is currntly not supported.')
+        
     
-    output_enhancing, target_enhancing = brats_val_data['ET'] 
-    output_core, target_core = brats_val_data['TC'] 
-    output_whole, target_whole = brats_val_data['WT']
 
     hausdorff_for_enhancing = channel_hausdorff(output=output_enhancing, 
-                                                  target=target_enhancing, 
-                                                  **kwargs)
+                                                target=target_enhancing, 
+                                                **kwargs)
 
     hausdorff_for_core = channel_hausdorff(output=output_core, 
-                                             target=target_core, 
-                                             **kwargs)
+                                           target=target_core, 
+                                           **kwargs)
 
     hausdorff_for_whole = channel_hausdorff(output=output_whole, 
-                                              target=target_whole, 
-                                              **kwargs)
+                                            target=target_whole, 
+                                            **kwargs)
 
     return {tag + 'Hausdorff95_ET': hausdorff_for_enhancing, 
             tag + 'Hausdorff95_TC': hausdorff_for_core, 
             tag + 'Hausdorff95_WT': hausdorff_for_whole}
 
 
-def brats_dice(brats_val_data, fine_grained=True, tag='', smooth=1e-7, **kwargs):
+def brats_dice(output, 
+               target, 
+               fine_grained=True, 
+               tag='', 
+               smooth=1e-7, 
+               class_list=None, 
+               data_already_processes=False, 
+               **kwargs):
     
-    fine_grained_results = brats_dice_fine_grained(brats_val_data, 
-                                                   smooth=smooth,
+    if not data_already_processed:
+        # here we are being passed the raw output and target
+        brats_val_data = brats_labels(output=output, 
+                                    target=target, 
+                                    class_list=class_list, 
+                                    binarized=False, 
+                                    **kwargs)
+        outputs = brats_val_data['outputs']
+        targets = brats_val_data['targets']
+        if tag != '':
+            if tag != 'float_':
+                raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
+        else:
+            # overwriting default tag here
+            tag = 'float_'
+    else:
+        outputs = output
+        targets = target
+    
+    fine_grained_results = brats_dice_fine_grained(outputs,
+                                                   targets, 
+                                                   smooth=smooth, 
+                                                   tag=tag,
                                                    **kwargs)
     if fine_grained:
         # here keys will be: 'ET', 'TC', and 'WT
@@ -335,11 +488,16 @@ def brats_dice(brats_val_data, fine_grained=True, tag='', smooth=1e-7, **kwargs)
         return {tag + 'DICE_AVG(ET,TC,WT)': average}
 
 
-def brats_dice_fine_grained(brats_val_data, tag='', smooth=1e-7, **kwargs):
+def brats_dice_fine_grained(outputs, targets, tag='', smooth=1e-7, **kwargs):
 
-    output_enhancing, target_enhancing = brats_val_data['ET'] 
-    output_core, target_core = brats_val_data['TC'] 
-    output_whole, target_whole = brats_val_data['WT']
+    output_enhancing = outputs['ET'] 
+    target_enhancing = targets['ET']
+
+    output_core = outputs['TC'] 
+    target_core = targets['TC'] 
+
+    output_whole = outputs['WT'] 
+    target_whole = targets['WT']
 
     dice_for_enhancing = channel_dice(output=output_enhancing, 
                                       target=target_enhancing, 
@@ -360,15 +518,38 @@ def brats_dice_fine_grained(brats_val_data, tag='', smooth=1e-7, **kwargs):
             tag + 'DICE_TC': dice_for_core, 
             tag + 'DICE_WT': dice_for_whole}
 
+        
+def brats_dice_for_loss(output, target, class_list, smooth=1e-7, **kwargs):
+
+    # process the output and target (using non-binarized so we can back prop with it)
+    brats_val_data = brats_labels(output=output, 
+                                  target=target, 
+                                  class_list=class_list, 
+                                  binarized=False, 
+                                  **kwargs)
+    outputs = brats_val_data['outputs']
+    targets = brats_val_data['targets']
+
+    return brats_dice(output=outputs,
+                      target=targets, 
+                      fine_grained=False,
+                      smooth=smooth,
+                      tag='float_',
+                      data_already_processed=True, 
+                      **kwargs)
+
 
 def brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
+
     b_dice = brats_dice(output=output, 
                         target=target, 
-                        class_list=class_list,
                         fine_grained=False, 
-                        smooth=smooth, 
-                        **kwargs)
-    return 1 - b_dice['AVG(ET,WT,TC)']
+                        smooth=1e-7, 
+                        class_list=class_list, 
+                        data_already_processes=False, 
+                        **kwargs)['float_DICE_AVG(ET,TC,WT)']
+    
+    return 1 - b_dice
 
 
 def mirrored_brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
@@ -381,19 +562,21 @@ def mirrored_brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
     
 
 def brats_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
+    
     b_dice = brats_dice(output=output, 
                         target=target, 
-                        class_list=class_list,
                         fine_grained=False, 
-                        smooth=smooth, 
-                        **kwargs)
+                        smooth=1e-7, 
+                        class_list=class_list, 
+                        data_already_processes=False, 
+                        **kwargs)['float_DICE_AVG(ET,TC,WT)']
 
-    if b_dice['AVG(ET,WT,TC)'] < 0:
-        raise ValueError('BraTS dice should never be negative, someting is wrong.')                          
-    elif b_dice['AVG(ET,WT,TC)'] == 0:
-        return 0
+    if b_dice < 0:
+        raise ValueError('BraTS dice should never be negative, something is wrong.')                          
+    elif b_dice == 0:
+        raise ValueError('BraTS dice should never be zero, something is wrong.')
     else:
-        return - torch.log(b_dice['AVG(ET,WT,TC)'])
+        return - torch.log(b_dice)
 
 
 def brats_dice_loss_w_crossentropy(output, 
@@ -501,7 +684,7 @@ def channel_hausdorff(output, target, **kwargs):
     '''
     output, target are float values and contain 0s and 1s only
     '''
-    check_are_binary(output=output, target=target)
+    check_are_binary_numpy(output=output, target=target)
 
     return hd95(output, target, **kwargs)
 

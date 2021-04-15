@@ -22,6 +22,7 @@ model_object_init:
     use_penalties: False
     validate_with_fine_grained_dice: True
     sigmoid_input_multiplier: 20.0
+    validation_function: 'fets_phase2_validation'
 
 collaborator_object_init:
   init_kwargs:

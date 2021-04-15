@@ -21,6 +21,7 @@ model_object_init:
     opt: adam
     use_penalties: False
     validate_with_fine_grained_dice: True
+    validation_function: 'fets_phase2_validation'
 
 collaborator_object_init:
   init_kwargs:
@@ -47,7 +48,7 @@ data_object_init:
     split_instance_dirname: 'fets_phase1_split_1'
     np_split_seed: 8950
     allow_auto_split: True
-    class_list: ['4', '1||2||4', '1||4']
+    class_list: ['4', '1||4', '1||2||4']
     data_augmentation:
       'noise':
         'mean': 0.0
