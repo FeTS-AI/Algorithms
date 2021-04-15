@@ -164,7 +164,6 @@ def brats_labels(output, target, class_list, binarized):
     # these can be binary (per-voxel) decisions (if binarized==True) or float valued
     
     if binarized:
-        tag='float_'
         output_enhancing = binarize_output(output=output, 
                                            class_list=class_list, 
                                            modality='ET')
@@ -181,7 +180,6 @@ def brats_labels(output, target, class_list, binarized):
         target_whole = binarize_label(label=target, modality='WT')
        
     else:
-        tag='binary_'
         # We detect specific use_cases here, and force a change in the code when another is wanted.
         # In all cases, we rely on the order of class_list !!!
         if list(class_list) == [0, 1, 2, 4]:
@@ -222,7 +220,7 @@ def brats_labels(output, target, class_list, binarized):
                         'WT': output_whole},
             'targets': {'ET': target_enhancing, 
                         'TC': target_core, 
-                        'WT': target_whole}}, tag
+                        'WT': target_whole}}
 
 
 ######################################################
@@ -237,20 +235,20 @@ def fets_phase2_validatation(output, target, class_list, **kwargs):
 
     
     # get the binarized and non-binarized versions of the outputs and labels
-    brats_val_data_non_binary, binary_tag = brats_labels(output=output, 
-                                                         target=target, 
-                                                         class_list=class_list, 
-                                                         binarized=False, 
-                                                         **kwargs)
+    brats_val_data_non_binary = brats_labels(output=output, 
+                                             target=target, 
+                                             class_list=class_list, 
+                                             binarized=False, 
+                                             **kwargs)
     outputs_non_binary = brats_val_data_non_binary['outputs']
     targets_non_binary = brats_val_data_non_binary['targets']
 
 
-    brats_val_data_binary, non_binary_tag = brats_labels(output=output, 
-                                                         target=target, 
-                                                         class_list=class_list, 
-                                                         binarized=True, 
-                                                         **kwargs)
+    brats_val_data_binary = brats_labels(output=output, 
+                                         target=target, 
+                                         class_list=class_list, 
+                                         binarized=True, 
+                                         **kwargs)
     outputs_binary = brats_val_data_binary['outputs']
     targets_binary = brats_val_data_binary['targets']
 
@@ -258,39 +256,39 @@ def fets_phase2_validatation(output, target, class_list, **kwargs):
 
     # validation based on float outputs                                     
     all_validation.update(brats_dice(output=outputs_non_binary,
-                                     target=targets_non_binary 
+                                     target=targets_non_binary, 
                                      fine_grained=True, 
-                                     tag=non_binary_tag, 
+                                     tag='float_', 
                                      data_already_processes=True,
                                      **kwargs))
     
     # validation based on binarized outputs
     all_validation.update(brats_dice(output=outputs_binary,
-                                     target=targets_binary 
+                                     target=targets_binary, 
                                      fine_grained=True, 
-                                     tag=binary_tag
+                                     tag='binary_',
                                      data_already_processes=True,
                                      **kwargs))
     all_validation.update(brats_hausdorff(output=outputs_binary,
                                           target=targets_binary, 
-                                          tag=binary_tag, 
+                                          tag='binary_', 
                                           data_already_processes=True, 
                                           **kwargs))
     all_validation.update(brats_sensitivity(output=outputs_binary,
                                             target=targets_binary, 
-                                            tag=binary_tag, 
+                                            tag='binary_', 
                                             data_already_processes=True, 
                                             **kwargs))
     all_validation.update(brats_specificity(output=outputs_binary,
                                             target=targets_binary, 
-                                            tag=binary_tag, 
+                                            tag='binary_', 
                                             data_already_processes=True, 
                                             **kwargs))
     
     return all_validation
 
 
-def brats_sensitivity(output, target, tag='', to_scalar=True, data_already_processed, **kwargs):
+def brats_sensitivity(output, target, tag='', to_scalar=True, class_list=None,data_already_processed=False, **kwargs):
     
     if not data_already_processed:
         # here we are being passed the raw output and target
@@ -339,7 +337,7 @@ def brats_sensitivity(output, target, tag='', to_scalar=True, data_already_proce
             tag + 'Sensitivity_TC': sensitivity_for_core, 
             tag + 'Sensitivity_WT': sensitivity_for_whole}
 
-def brats_specificity(output, target, tag='', to_scalar=True, data_already_processed, **kwargs):
+def brats_specificity(output, target, tag='', to_scalar=True, class_list=None, data_already_processed=False, **kwargs):
     
     if not data_already_processed:
         # here we are being passed the raw output and target
@@ -389,7 +387,7 @@ def brats_specificity(output, target, tag='', to_scalar=True, data_already_proce
             tag + 'Specificity_WT': specificity_for_whole}
 
 
-def brats_hausdorff(output, target, tag='', to_scalar=True, data_already_processed=False, **kwargs):
+def brats_hausdorff(output, target, tag='', to_scalar=True, class_list=None, data_already_processed=False, **kwargs):
 
     if not data_already_processed:
         # here we are being passed the raw output and target
@@ -453,7 +451,7 @@ def brats_dice(output,
                tag='', 
                smooth=1e-7, 
                class_list=None, 
-               data_already_processes=False, 
+               data_already_processed=False, 
                **kwargs):
     
     if not data_already_processed:
