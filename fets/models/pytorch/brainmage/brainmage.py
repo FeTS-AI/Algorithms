@@ -172,7 +172,10 @@ class BrainMaGeModel(PyTorchFLModel):
             self.validation_function = fets_phase2_validation
             self.validation_output_keys = ['float_DICE_ET', 
                                            'float_DICE_TC', 
-                                           'float_DICE_WT', 
+                                           'float_DICE_WT',
+                                           'binary_DICE_ET', 
+                                           'binary_DICE_TC', 
+                                           'binary_DICE_WT', 
                                            'binary_Hausdorff95_ET', 
                                            'binary_Hausdorff95_TC', 
                                            'binary_Hausdorff95_WT', 
