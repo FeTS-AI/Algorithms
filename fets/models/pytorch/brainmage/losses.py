@@ -254,7 +254,7 @@ def brats_labels(output, target, class_list, binarized, **kwargs):
 ######################################################
 
 
-def fets_phase2_validation(output, target, class_list, class_axis=1, **kwargs):
+def fets_phase2_validation(output, target, class_list, class_axis=1, to_scalar=True, **kwargs):
     # some sanity checks
     check_shapes_same(output=output, target=target)
     check_classes_enumerated_along_correct_axis(tensor=output, axis=class_axis, num_classes=len(class_list))
@@ -283,40 +283,38 @@ def fets_phase2_validation(output, target, class_list, class_axis=1, **kwargs):
     # validation based on float outputs                                     
     all_validation.update(brats_dice(output=outputs_non_binary,
                                      target=targets_non_binary, 
-                                     fine_grained=True, 
                                      tag='float_', 
-                                     data_already_processed=True, 
-                                     to_scalar=True,
+                                     data_already_processed=True,
+                                     to_scalar=to_scalar, 
                                      **kwargs))
     
     # validation based on binarized outputs
     all_validation.update(brats_dice(output=outputs_binary,
                                      target=targets_binary, 
-                                     fine_grained=True, 
                                      tag='binary_',
                                      data_already_processed=True,
-                                     to_scalar=True,
+                                     to_scalar=to_scalar, 
                                      **kwargs))
 
     all_validation.update(brats_hausdorff(output=outputs_binary,
                                           target=targets_binary, 
                                           tag='binary_', 
                                           data_already_processed=True,
-                                          to_scalar=True, 
+                                          to_scalar=to_scalar, 
                                           **kwargs))
 
     all_validation.update(brats_sensitivity(output=outputs_binary,
                                             target=targets_binary, 
                                             tag='binary_', 
                                             data_already_processed=True,
-                                            to_scalar=True, 
+                                            to_scalar=to_scalar, 
                                             **kwargs))
 
     all_validation.update(brats_specificity(output=outputs_binary,
                                             target=targets_binary, 
                                             tag='binary_', 
                                             data_already_processed=True,
-                                            to_scalar=True, 
+                                            to_scalar=to_scalar, 
                                             **kwargs))
     
     return all_validation

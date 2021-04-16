@@ -467,7 +467,6 @@ class BrainMaGeModel(PyTorchFLModel):
                                                         target=mask, 
                                                         class_list=self.data.class_list, 
                                                         fine_grained=self.validate_with_fine_grained_dice, 
-                                                        to_scalar=True, 
                                                         **self.validation_function_kwargs)
 
             # the dice results here are dictionaries (sum up the totals)
