@@ -289,12 +289,6 @@ def fets_phase2_validation(output, target, class_list, class_axis=1, to_scalar=T
                                      **kwargs))
     
     # validation based on binarized outputs
-    print("This should be the binary dice being inserted: ", brats_dice(output=outputs_binary,
-                                     target=targets_binary, 
-                                     tag='binary_',
-                                     data_already_processed=True,
-                                     to_scalar=to_scalar, 
-                                     **kwargs))
     all_validation.update(brats_dice(output=outputs_binary,
                                      target=targets_binary, 
                                      tag='binary_',
@@ -322,6 +316,8 @@ def fets_phase2_validation(output, target, class_list, class_axis=1, to_scalar=T
                                             data_already_processed=True,
                                             to_scalar=to_scalar, 
                                             **kwargs))
+
+    print('This should be the val dict: ', all_validation)
     
     return all_validation
 
