@@ -36,7 +36,7 @@ from GANDLF.utils import one_hot
 
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels
+from .losses import MCD_loss, MCD_MSE_loss, dice_loss
 from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
 from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirrored_brats_dice_loss
 from .losses import fets_phase2_validatation

@@ -16,6 +16,7 @@ import torch
 from medpy.metric.binary import hd95
 
 from fets.data.pytorch import new_labels_from_float_output
+from GANDLF.utils import reverse_one_hot
 
 ######################################################
 # some sanity checks to apply throughout this module #
@@ -112,42 +113,41 @@ def apply_threshold(tensor, threshold=0.5):
     return bin_tensor
 
 
-def binarize_label(label, modality):
-    
-    bin_label = torch.clone(label)
-    
-    if modality == 'ET':
-        bin_label[bin_label==1] = 0
-        bin_label[bin_label==2] = 0
-        bin_label[bin_label==4] = 1
-    elif modality == 'TC':
-        bin_label[bin_label==2] = 0
-        bin_label[bin_label==4] = 1
-    elif modality == 'WT':
-        bin_label[bin_label==2] = 1
-        bin_label[bin_label==4] = 1
-    else:
-        raise ValueError('Modality {} is not currently supported.'.format(modality))
-    
-    return bin_label
-
 def binarize_output(output, class_list, modality, threshold=0.5, class_axis=1):
-
     if class_list == [0, 1, 2, 4]:
         # process the one_hot channels using argmax to get integer output
         integer_output = int_output_from_softmax_output(output=output, class_list=class_list, class_axis=class_axis)
         # convert [0, 1, 2, 4] to binary for modality
-        binarized_output = binarize_label(label=integer_output, modality=modality)
+        binarized_output = torch.clone(integer_output)
+    
+        if modality == 'ET':
+            binarized_output[binarized_output==1] = 0
+            binarized_output[binarized_output==2] = 0
+            binarized_output[binarized_output==4] = 1
+        elif modality == 'TC':
+            binarized_output[binarized_output==2] = 0
+            binarized_output[binarized_output==4] = 1
+        elif modality == 'WT':
+            binarized_output[binarized_output==2] = 1
+            binarized_output[binarized_output==4] = 1
+        else:
+            raise ValueError('Modality {} is not currently supported.'.format(modality))
 
     elif class_list == ['4', '1||4', '1||2||4']:
         check_classes_enumerated_along_correct_axis(tensor=output, axis=class_axis, num_classes=len(class_list))
+
+        slices = [slice(None) for _ in output.shape]
+
         # select appropriate channel for modality, and convert floats to binary using threshold
-        if modality == 'ET': 
-            binarized_output = apply_threshold(output[0], threshold=threshold)
+        if modality == 'ET':
+            slices[class_axis] = 0 
+            binarized_output = apply_threshold(output[tuple(slices)], threshold=threshold)
         elif modality == 'TC':
-            binarized_output = apply_threshold(output[1], threshold=threshold)
+            slices[class_axis] = 1
+            binarized_output = apply_threshold(output[tuple(slices)], threshold=threshold)
         elif modality == 'WT':
-            binarized_output = apply_threshold(output[2], threshold=threshold)
+            slices[class_axis] = 2
+            binarized_output = apply_threshold(output[tuple(slices)], threshold=threshold)
         else:
             raise ValueError('Modality {} is not currently supported.'.format(modality))
           
@@ -158,7 +158,7 @@ def binarize_output(output, class_list, modality, threshold=0.5, class_axis=1):
 
 
 
-def brats_labels(output, target, class_list, binarized):
+def brats_labels(output, target, class_list, binarized, **kwargs):
     # take output and target and create: (output_<task>, lable_<task>)
     # for tasks in ['enhancing', 'core', 'whole']
     # these can be binary (per-voxel) decisions (if binarized==True) or float valued
@@ -167,53 +167,68 @@ def brats_labels(output, target, class_list, binarized):
         output_enhancing = binarize_output(output=output, 
                                            class_list=class_list, 
                                            modality='ET')
-        target_enhancing = binarize_label(label=target, modality='ET')
-
+        
         output_core = binarize_output(output=output, 
                                       class_list=class_list, 
                                       modality='TC')
-        target_core = binarize_label(label=target, modality='TC')
         
         output_whole = binarize_output(output=output, 
                                        class_list=class_list, 
                                        modality='WT')
-        target_whole = binarize_label(label=target, modality='WT')
        
-    else:
-        # We detect specific use_cases here, and force a change in the code when another is wanted.
-        # In all cases, we rely on the order of class_list !!!
-        if list(class_list) == [0, 1, 2, 4]:
-
+    # We detect specific use_cases here, and force a change in the code when another is wanted.
+    # In all cases, we rely on the order of class_list !!!
+    if list(class_list) == [0, 1, 2, 4]:
+        if not binarized:
             # signal is channel 3 based on known class_list
             output_enhancing = output[:,3,:,:,:]
-            target_enhancing = target[:,3,:,:,:]
 
             # core signal comes from channels 1 or 3 based on known class_list
             output_channels_1_3 = torch.cat([output[:,1:2,:,:,:], output[:,3:4,:,:,:]], dim=1)
             output_core = torch.max(output_channels_1_3,dim=1).values
-            target_channels_1_3 = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
-            target_core = torch.max(target_channels_1_3,dim=1).values
-        
+
             # whole signal comes from channels 1, 2, or 3 based on known class_list
             output_whole = torch.max(output[:,1:,:,:,:],dim=1).values
-            target_whole = torch.max(target[:,1:,:,:,:],dim=1).values
         
-        elif list(class_list) == ['4', '1||4', '1||2||4']:
-            # In this case we track only enhancing tumor, tumor core, and whole tumor (no background class).
-        
+        # signal is channel 3 based on known class_list
+        target_enhancing = target[:,3,:,:,:]
+
+        # core signal comes from channels 1 or 3 based on known class_list
+        target_channels_1_3 = torch.cat([target[:,1:2,:,:,:], target[:,3:4,:,:,:]],dim=1)
+        target_core = torch.max(target_channels_1_3,dim=1).values
+    
+        # whole signal comes from channels 1, 2, or 3 based on known class_list
+        target_whole = torch.max(target[:,1:,:,:,:],dim=1).values
+    
+    elif list(class_list) == ['4', '1||4', '1||2||4']:
+        # In this case we track only enhancing tumor, tumor core, and whole tumor (no background class).
+    
+        if not binarized:
+
             # enhancing signal is channel 0 because of known class_list with fused labels
             output_enhancing = output[:,0,:,:,:]
-            target_enhancing = target[:,0,:,:,:]
-            
+
             # core signal is channel 1 because of known class_list with fused labels
             output_core = output[:,1,:,:,:]
-            target_core = target[:,1,:,:,:]
-            
+
             # whole signal is channel 2 because of known class_list with fused labels
             output_whole = output[:,2,:,:,:]
-            target_whole = target[:,2,:,:,:]
-        else:
-            raise ValueError('No implementation for this model class_list: ', class_list)
+        
+        
+        # enhancing signal is channel 0 because of known class_list with fused labels
+        target_enhancing = target[:,0,:,:,:]
+        
+        # core signal is channel 1 because of known class_list with fused labels
+        target_core = target[:,1,:,:,:]
+        
+        # whole signal is channel 2 because of known class_list with fused labels
+        target_whole = target[:,2,:,:,:]
+    else:
+        raise ValueError('No implementation for this model class_list: ', class_list)
+
+    check_shapes_same(output=output_enhancing, target=target_enhancing)
+    check_shapes_same(output=output_core, target=target_core)
+    check_shapes_same(output=output_whole, target=target_whole)
 
     return {'outputs': {'ET': output_enhancing, 
                         'TC': output_core,
@@ -228,17 +243,17 @@ def brats_labels(output, target, class_list, binarized):
 ######################################################
 
 
-def fets_phase2_validatation(output, target, class_list, **kwargs):
+def fets_phase2_validatation(output, target, class_list, class_axis=1, **kwargs):
     # some sanity checks
     check_shapes_same(output=output, target=target)
-    check_classes_enumerated_along_correct_axis(tensor=output, axis=1, num_classes=len(class_list))
+    check_classes_enumerated_along_correct_axis(tensor=output, axis=class_axis, num_classes=len(class_list))
 
     
     # get the binarized and non-binarized versions of the outputs and labels
     brats_val_data_non_binary = brats_labels(output=output, 
                                              target=target, 
                                              class_list=class_list, 
-                                             binarized=False, 
+                                             binarized=False,
                                              **kwargs)
     outputs_non_binary = brats_val_data_non_binary['outputs']
     targets_non_binary = brats_val_data_non_binary['targets']
@@ -247,7 +262,7 @@ def fets_phase2_validatation(output, target, class_list, **kwargs):
     brats_val_data_binary = brats_labels(output=output, 
                                          target=target, 
                                          class_list=class_list, 
-                                         binarized=True, 
+                                         binarized=True,
                                          **kwargs)
     outputs_binary = brats_val_data_binary['outputs']
     targets_binary = brats_val_data_binary['targets']
@@ -259,7 +274,7 @@ def fets_phase2_validatation(output, target, class_list, **kwargs):
                                      target=targets_non_binary, 
                                      fine_grained=True, 
                                      tag='float_', 
-                                     data_already_processes=True,
+                                     data_already_processed=True,
                                      **kwargs))
     
     # validation based on binarized outputs
@@ -267,35 +282,46 @@ def fets_phase2_validatation(output, target, class_list, **kwargs):
                                      target=targets_binary, 
                                      fine_grained=True, 
                                      tag='binary_',
-                                     data_already_processes=True,
+                                     data_already_processed=True,
                                      **kwargs))
+
     all_validation.update(brats_hausdorff(output=outputs_binary,
                                           target=targets_binary, 
                                           tag='binary_', 
-                                          data_already_processes=True, 
+                                          data_already_processed=True, 
                                           **kwargs))
+
     all_validation.update(brats_sensitivity(output=outputs_binary,
                                             target=targets_binary, 
                                             tag='binary_', 
-                                            data_already_processes=True, 
+                                            data_already_processed=True, 
                                             **kwargs))
+
     all_validation.update(brats_specificity(output=outputs_binary,
                                             target=targets_binary, 
                                             tag='binary_', 
-                                            data_already_processes=True, 
+                                            data_already_processed=True, 
                                             **kwargs))
     
     return all_validation
 
 
-def brats_sensitivity(output, target, tag='', to_scalar=True, class_list=None,data_already_processed=False, **kwargs):
+def brats_sensitivity(output, 
+                      target,
+                      tag='', 
+                      to_scalar=True, 
+                      class_list=None,
+                      data_already_processed=False, 
+                      **kwargs):
     
     if not data_already_processed:
+        if class_list is None:
+            raise ValueError('class_list needs to be provided when data_already_processed is False.')
         # here we are being passed the raw output and target
         brats_val_data = brats_labels(output=output, 
                                     target=target, 
                                     class_list=class_list, 
-                                    binarized=False, 
+                                    binarized=False,
                                     **kwargs)
         outputs = brats_val_data['outputs']
         targets = brats_val_data['targets']
@@ -337,14 +363,21 @@ def brats_sensitivity(output, target, tag='', to_scalar=True, class_list=None,da
             tag + 'Sensitivity_TC': sensitivity_for_core, 
             tag + 'Sensitivity_WT': sensitivity_for_whole}
 
-def brats_specificity(output, target, tag='', to_scalar=True, class_list=None, data_already_processed=False, **kwargs):
+def brats_specificity(output, 
+                      target,
+                      tag='',
+                      to_scalar=True, 
+                      class_list=None,
+                      data_already_processed=False, **kwargs):
     
     if not data_already_processed:
+        if class_list is None:
+            raise ValueError('class_list needs to be provided when data_already_processed is False.')
         # here we are being passed the raw output and target
         brats_val_data = brats_labels(output=output, 
                                     target=target, 
                                     class_list=class_list, 
-                                    binarized=False, 
+                                    binarized=False,
                                     **kwargs)
         outputs = brats_val_data['outputs']
         targets = brats_val_data['targets']
@@ -387,13 +420,21 @@ def brats_specificity(output, target, tag='', to_scalar=True, class_list=None, d
             tag + 'Specificity_WT': specificity_for_whole}
 
 
-def brats_hausdorff(output, target, tag='', to_scalar=True, class_list=None, data_already_processed=False, **kwargs):
+def brats_hausdorff(output, 
+                    target, 
+                    tag='', 
+                    to_scalar=True, 
+                    class_list=None, 
+                    data_already_processed=False, 
+                    **kwargs):
 
     if not data_already_processed:
+        if class_list is None:
+            raise ValueError('class_list needs to be provided when data_already_processed is False.')
         # here we are being passed the raw output and target
         brats_val_data = brats_labels(output=output, 
                                     target=target, 
-                                    class_list=class_list, 
+                                    class_list=class_list,
                                     binarized=False, 
                                     **kwargs)
         outputs = brats_val_data['outputs']
@@ -450,15 +491,18 @@ def brats_dice(output,
                fine_grained=True, 
                tag='', 
                smooth=1e-7, 
-               class_list=None, 
+               class_list=None,
+               class_axis=None, 
                data_already_processed=False, 
                **kwargs):
     
     if not data_already_processed:
+        if class_list is None:
+            raise ValueError('class_list needs to be provided when data_already_processed is False.')
         # here we are being passed the raw output and target
         brats_val_data = brats_labels(output=output, 
                                     target=target, 
-                                    class_list=class_list, 
+                                    class_list=class_list,
                                     binarized=False, 
                                     **kwargs)
         outputs = brats_val_data['outputs']
@@ -473,8 +517,8 @@ def brats_dice(output,
         outputs = output
         targets = target
     
-    fine_grained_results = brats_dice_fine_grained(outputs,
-                                                   targets, 
+    fine_grained_results = brats_dice_fine_grained(outputs=outputs,
+                                                   targets=targets, 
                                                    smooth=smooth, 
                                                    tag=tag,
                                                    **kwargs)
@@ -497,6 +541,8 @@ def brats_dice_fine_grained(outputs, targets, tag='', smooth=1e-7, **kwargs):
     output_whole = outputs['WT'] 
     target_whole = targets['WT']
 
+    print('shapes fo out_en and tar_en are: ', output_enhancing.shape, target_enhancing.shape)
+
     dice_for_enhancing = channel_dice(output=output_enhancing, 
                                       target=target_enhancing, 
                                       smooth=smooth, 
@@ -517,26 +563,6 @@ def brats_dice_fine_grained(outputs, targets, tag='', smooth=1e-7, **kwargs):
             tag + 'DICE_WT': dice_for_whole}
 
         
-def brats_dice_for_loss(output, target, class_list, smooth=1e-7, **kwargs):
-
-    # process the output and target (using non-binarized so we can back prop with it)
-    brats_val_data = brats_labels(output=output, 
-                                  target=target, 
-                                  class_list=class_list, 
-                                  binarized=False, 
-                                  **kwargs)
-    outputs = brats_val_data['outputs']
-    targets = brats_val_data['targets']
-
-    return brats_dice(output=outputs,
-                      target=targets, 
-                      fine_grained=False,
-                      smooth=smooth,
-                      tag='float_',
-                      data_already_processed=True, 
-                      **kwargs)
-
-
 def brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
 
     b_dice = brats_dice(output=output, 
@@ -687,6 +713,8 @@ def channel_hausdorff(output, target, **kwargs):
     return hd95(output, target, **kwargs)
 
 def channel_dice(output, target, smooth=1e-7, to_scalar=False, mirrored=False, **kwargs):
+    # this dice is appropriate for  a single channel
+    # examples are: background only, whole tumor only, enhancing tumor only, tumor core only
     def straight_dice(output, target, smooth, to_scalar, **kwargs):
         output = output.contiguous().view(-1)
         target = target.contiguous().view(-1)
