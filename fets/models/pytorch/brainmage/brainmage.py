@@ -39,7 +39,7 @@ from openfl.models.pytorch import PyTorchFLModel
 from .losses import MCD_loss, MCD_MSE_loss, dice_loss
 from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
 from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirrored_brats_dice_loss
-from .losses import fets_phase2_validatation
+from .losses import fets_phase2_validation
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -168,8 +168,8 @@ class BrainMaGeModel(PyTorchFLModel):
                                                'float_DICE_WT']
             else:
                 self.validation_output_keys = ['float_DICE_AVG(ET,TC,WT)']
-        elif self.which_validation == 'fets_phase2_validatation':
-            self.validation_function = fets_phase2_validatation
+        elif self.which_validation == 'fets_phase2_validation':
+            self.validation_function = fets_phase2_validation
             self.validation_output_keys = ['float_DICE_ET', 
                                            'float_DICE_TC', 
                                            'float_DICE_WT', 
