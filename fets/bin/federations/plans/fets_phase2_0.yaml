@@ -22,6 +22,9 @@ aggregator_object_init:
       - straggler_cutoff_time
       - send_metadata_to_clients
       - save_all_models_path
+    model_selection_val_keys: ['binary_DICE_ET', 
+                               'binary_DICE_TC', 
+                               'binary_DICE_WT']
 
 model_object_init:
   class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet

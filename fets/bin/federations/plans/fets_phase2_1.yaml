@@ -9,6 +9,9 @@ aggregator_object_init:
   init_kwargs:
     rounds_to_train: 200
     model_directory: fets_phase2_1
+    model_selection_val_keys: ['binary_DICE_ET', 
+                               'binary_DICE_TC', 
+                               'binary_DICE_WT']
 
 model_object_init:
   class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet
