@@ -22,10 +22,14 @@ from GANDLF.utils import reverse_one_hot
 # some sanity checks to apply throughout this module #
 ######################################################
 
+def check_is_binary_single(tensor):
+    unique_values = torch.unique(tensor).numpy()
+    if not set(unique_values).issubset(set([1.0, 0.0])):
+        raise ValueError('The provided tensor is not binary as unique values are: {}'.format(unique_values))
 
 def check_are_binary(output, target):
-    binary_output = torch.all(torch.unique(output) == torch.Tensor([1.0, 0.0]))
-    binary_target = torch.all(torch.unique(target) == torch.Tensor([1.0, 0.0]))
+    binary_output = (set(torch.unique(output).numpy()).issubset(set([1.0, 0.0])))
+    binary_target = (set(torch.unique(target).numpy()).issubset(set([1.0, 0.0])))
     if binary_output:
         if not binary_target:
             raise ValueError('The provided target is not binary.')
@@ -36,8 +40,8 @@ def check_are_binary(output, target):
             raise ValueError('The provided output is not binary.')
 
 def check_are_binary_numpy(output, target):
-    binary_output = np.all(np.unique(output) == np.array([1.0, 0.0]))
-    binary_target = np.all(np.unique(target) == np.array([1.0, 0.0]))
+    binary_output = (set(np.unique(output)).issubset(set([1.0, 0.0])))
+    binary_target = (set(np.unique(target)).issubset(set([1.0, 0.0])))
     if binary_output:
         if not binary_target:
             raise ValueError('The provided target is not binary.')
@@ -90,6 +94,9 @@ def check_values_in_open_interval(output, lower_limit, upper_limit):
 def int_output_from_softmax_output(output, class_list, class_axis=1):
     
     # infers class from float output by finding max of one-hot channels and applying class accordingly
+    # requires a class list for which the class channel enumerates softmax output
+    # for now this is only one class_list case
+    assert class_list == [0, 1, 2, 4]
 
     check_classes_enumerated_along_correct_axis(tensor=output, axis=class_axis, num_classes=len(class_list))
     check_axis_sum_is_one_single_tensor(tensor=output, dim=class_axis)
@@ -99,6 +106,8 @@ def int_output_from_softmax_output(output, class_list, class_axis=1):
 
     # replace indices with appropriate class label
     int_output.apply_(lambda idx : class_list[idx])
+
+    
 
     return int_output
 
@@ -153,6 +162,8 @@ def binarize_output(output, class_list, modality, threshold=0.5, class_axis=1):
           
     else:
         raise ValueError("Class list {} is not currently supported.".format(class_list))
+
+    check_is_binary_single(binarized_output)
     
     return binarized_output
 
@@ -460,9 +471,12 @@ def brats_hausdorff(output,
 
     if to_scalar:
         # channel_hausdorff processes numpy arrays
-        output_enhancing, target_enhancing = output_enhancing.numpy(), target_enhancing.numpy()
-        output_core, target_core = output_core.numpy(), target_core.numpy() 
-        output_whole, target_whole = output_whole.numpy(), target_whole.numpy()
+        output_enhancing = output_enhancing.numpy().astype(np.int32) 
+        target_enhancing = target_enhancing.numpy().astype(np.int32) 
+        output_core  = output_core.numpy().astype(np.int32)   
+        target_core = target_core.numpy().astype(np.int32) 
+        output_whole  = output_whole.numpy().astype(np.int32)  
+        target_whole = target_whole.numpy().astype(np.int32) 
     else:
         # I don't believe converting to and from numpy to utilize the channel_hausdorff function can be tracked in the graph 
         raise ValueError('Computing BraTS hausdorff for torch tensors in the compute graph is currntly not supported.')
@@ -709,8 +723,11 @@ def channel_hausdorff(output, target, **kwargs):
     output, target are float values and contain 0s and 1s only
     '''
     check_are_binary_numpy(output=output, target=target)
-
-    return hd95(output, target, **kwargs)
+    # if both arrays are all zero, return 0
+    if np.sum(np.stack([output, target])) == 0:
+        return 0
+    else:
+        return hd95(output, target, **kwargs)
 
 def channel_dice(output, target, smooth=1e-7, to_scalar=False, mirrored=False, **kwargs):
     # this dice is appropriate for  a single channel
