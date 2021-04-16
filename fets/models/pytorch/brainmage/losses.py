@@ -573,7 +573,7 @@ def brats_dice_fine_grained(outputs, targets, tag='', smooth=1e-7, **kwargs):
                                   target=target_whole, 
                                   smooth=smooth, 
                                   **kwargs)
-
+    print('about to return fine grained dice with tag', tag)
     return {tag + 'DICE_ET': dice_for_enhancing, 
             tag + 'DICE_TC': dice_for_core, 
             tag + 'DICE_WT': dice_for_whole}
