@@ -526,6 +526,7 @@ def brats_dice(output,
                 raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
         else:
             # overwriting default tag here
+            print('Inferring float_ tag for dice score as data used were float labels by default.')
             tag = 'float_'
     else:
         outputs = output
@@ -582,7 +583,7 @@ def brats_dice_loss(output, target, class_list, smooth=1e-7, **kwargs):
                         fine_grained=False, 
                         smooth=1e-7, 
                         class_list=class_list, 
-                        data_already_processes=False, 
+                        data_already_processed=False, 
                         **kwargs)['float_DICE_AVG(ET,TC,WT)']
     
     return 1 - b_dice
@@ -604,7 +605,7 @@ def brats_dice_log_loss(output, target, class_list, smooth=1e-7, **kwargs):
                         fine_grained=False, 
                         smooth=1e-7, 
                         class_list=class_list, 
-                        data_already_processes=False, 
+                        data_already_processed=False, 
                         **kwargs)['float_DICE_AVG(ET,TC,WT)']
 
     if b_dice < 0:
