@@ -344,6 +344,7 @@ def brats_sensitivity(output,
                 raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
         else:
             # overwriting default tag here
+            print('Inferring float_ tag for dice score as data used were float labels by default.')
             tag = 'float_'
     else:
         outputs = output
@@ -400,6 +401,7 @@ def brats_specificity(output,
                 raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
         else:
             # overwriting default tag here
+            print('Inferring float_ tag for dice score as data used were float labels by default.')
             tag = 'float_'
     else:
         outputs = output
@@ -458,6 +460,7 @@ def brats_hausdorff(output,
                 raise ValueError('You are trying to tag float results with {} tag which is incorrect.'.format(tag))
         else:
             # overwriting default tag here
+            print('Inferring float_ tag for dice score as data used were float labels by default.')
             tag = 'float_'
     else:
         outputs = output
