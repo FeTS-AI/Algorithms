@@ -534,7 +534,7 @@ def brats_dice(output,
     else:
         outputs = output
         targets = target
-    
+    print("About to go into finegrained dicd with tag: ", tag)
     fine_grained_results = brats_dice_fine_grained(outputs=outputs,
                                                    targets=targets, 
                                                    smooth=smooth, 
