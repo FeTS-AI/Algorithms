@@ -317,8 +317,6 @@ def fets_phase2_validation(output, target, class_list, class_axis=1, to_scalar=T
                                             to_scalar=to_scalar, 
                                             **kwargs))
 
-    print('This should be the val dict: ', all_validation)
-    
     return all_validation
 
 
