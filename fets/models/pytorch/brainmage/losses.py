@@ -289,6 +289,12 @@ def fets_phase2_validation(output, target, class_list, class_axis=1, to_scalar=T
                                      **kwargs))
     
     # validation based on binarized outputs
+    print("This should be the binary dice being inserted: ", brats_dice(output=outputs_binary,
+                                     target=targets_binary, 
+                                     tag='binary_',
+                                     data_already_processed=True,
+                                     to_scalar=to_scalar, 
+                                     **kwargs))
     all_validation.update(brats_dice(output=outputs_binary,
                                      target=targets_binary, 
                                      tag='binary_',
@@ -534,7 +540,6 @@ def brats_dice(output,
     else:
         outputs = output
         targets = target
-    print("About to go into finegrained dicd with tag: ", tag)
     fine_grained_results = brats_dice_fine_grained(outputs=outputs,
                                                    targets=targets, 
                                                    smooth=smooth, 
@@ -573,7 +578,6 @@ def brats_dice_fine_grained(outputs, targets, tag='', smooth=1e-7, **kwargs):
                                   target=target_whole, 
                                   smooth=smooth, 
                                   **kwargs)
-    print('about to return fine grained dice with tag', tag)
     return {tag + 'DICE_ET': dice_for_enhancing, 
             tag + 'DICE_TC': dice_for_core, 
             tag + 'DICE_WT': dice_for_whole}
