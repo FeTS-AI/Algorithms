@@ -487,16 +487,13 @@ def brats_hausdorff(output,
     
 
     hausdorff_for_enhancing = channel_hausdorff(output=output_enhancing, 
-                                                target=target_enhancing, 
-                                                **kwargs)
+                                                target=target_enhancing)
 
     hausdorff_for_core = channel_hausdorff(output=output_core, 
-                                           target=target_core, 
-                                           **kwargs)
+                                           target=target_core)
 
     hausdorff_for_whole = channel_hausdorff(output=output_whole, 
-                                            target=target_whole, 
-                                            **kwargs)
+                                            target=target_whole)
 
     return {tag + 'Hausdorff95_ET': hausdorff_for_enhancing, 
             tag + 'Hausdorff95_TC': hausdorff_for_core, 
