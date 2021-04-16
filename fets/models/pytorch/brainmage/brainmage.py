@@ -182,6 +182,8 @@ class BrainMaGeModel(PyTorchFLModel):
                                            'binary_Specificity_ET', 
                                            'binary_Specificity_TC', 
                                            'binary_Specificity_WT']
+        else:
+            raise ValueError('The validation function {} is not currently supported'.format(self.which_validation))
 
         # old dc is now dice_loss_skipping_first_channel
         if self.which_loss == 'brats_dice_loss':
