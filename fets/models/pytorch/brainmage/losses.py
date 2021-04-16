@@ -285,7 +285,8 @@ def fets_phase2_validatation(output, target, class_list, class_axis=1, **kwargs)
                                      target=targets_non_binary, 
                                      fine_grained=True, 
                                      tag='float_', 
-                                     data_already_processed=True,
+                                     data_already_processed=True, 
+                                     to_scalar=True,
                                      **kwargs))
     
     # validation based on binarized outputs
@@ -294,24 +295,28 @@ def fets_phase2_validatation(output, target, class_list, class_axis=1, **kwargs)
                                      fine_grained=True, 
                                      tag='binary_',
                                      data_already_processed=True,
+                                     to_scalar=True,
                                      **kwargs))
 
     all_validation.update(brats_hausdorff(output=outputs_binary,
                                           target=targets_binary, 
                                           tag='binary_', 
-                                          data_already_processed=True, 
+                                          data_already_processed=True,
+                                          to_scalar=True, 
                                           **kwargs))
 
     all_validation.update(brats_sensitivity(output=outputs_binary,
                                             target=targets_binary, 
                                             tag='binary_', 
-                                            data_already_processed=True, 
+                                            data_already_processed=True,
+                                            to_scalar=True, 
                                             **kwargs))
 
     all_validation.update(brats_specificity(output=outputs_binary,
                                             target=targets_binary, 
                                             tag='binary_', 
-                                            data_already_processed=True, 
+                                            data_already_processed=True,
+                                            to_scalar=True, 
                                             **kwargs))
     
     return all_validation
@@ -555,8 +560,6 @@ def brats_dice_fine_grained(outputs, targets, tag='', smooth=1e-7, **kwargs):
     output_whole = outputs['WT'] 
     target_whole = targets['WT']
 
-    print('shapes fo out_en and tar_en are: ', output_enhancing.shape, target_enhancing.shape)
-
     dice_for_enhancing = channel_dice(output=output_enhancing, 
                                       target=target_enhancing, 
                                       smooth=smooth, 
@@ -694,7 +697,7 @@ def channel_log_dice_loss(output, target, smooth=1e-7, **kwargs):
                                 **kwargs))
 
 
-def channel_sensitivity(output, target, **kwargs):
+def channel_sensitivity(output, target, to_scalar=False, **kwargs):
     # compute TP/P 
 
     # the assumption is that output and target are binary
@@ -703,10 +706,16 @@ def channel_sensitivity(output, target, **kwargs):
     true_positives = torch.sum(torch.multiply(output, target))
     total_positives = torch.sum(target)
 
-    return true_positives / total_positives
+    if total_positives == 0:
+        return 1.0
+    else:
+        score = true_positives / total_positives
+        if to_scalar:
+            score = score.item()
+        return score
 
 
-def channel_specificity(output, target, **kwargs):
+def channel_specificity(output, target, to_scalar=False, **kwargs):
     # compute TN/N
 
     # the assumption is that output and target are binary
@@ -715,7 +724,13 @@ def channel_specificity(output, target, **kwargs):
     true_negatives = torch.sum(torch.multiply(1 - output, 1 - target))
     total_negatives = torch.sum(1 - target)
 
-    return true_negatives / total_negatives
+    if total_negatives == 0:
+        return 1.0
+    else:
+        score = true_negatives / total_negatives
+        if to_scalar:
+            score = score.item()
+        return score
 
 
 def channel_hausdorff(output, target, **kwargs):
@@ -723,9 +738,16 @@ def channel_hausdorff(output, target, **kwargs):
     output, target are float values and contain 0s and 1s only
     '''
     check_are_binary_numpy(output=output, target=target)
+    # check for either array having all zeros
+    output_zeros = np.sum(output) == 0.0
+    target_zeros = np.sum(target) == 0.0
+
     # if both arrays are all zero, return 0
-    if np.sum(np.stack([output, target])) == 0:
+    if output_zeros and target_zeros:
         return 0
+    # if exaclty one is all zeros, return max distance across volume (distance between corners)
+    elif output_zeros or target_zeros:
+        return np.linalg.norm([entry -1 for entry in output.shape])
     else:
         return hd95(output, target, **kwargs)
 
