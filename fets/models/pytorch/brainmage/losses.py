@@ -254,7 +254,7 @@ def brats_labels(output, target, class_list, binarized, **kwargs):
 ######################################################
 
 
-def fets_phase2_validatation(output, target, class_list, class_axis=1, **kwargs):
+def fets_phase2_validation(output, target, class_list, class_axis=1, **kwargs):
     # some sanity checks
     check_shapes_same(output=output, target=target)
     check_classes_enumerated_along_correct_axis(tensor=output, axis=class_axis, num_classes=len(class_list))
