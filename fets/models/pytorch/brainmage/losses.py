@@ -731,7 +731,7 @@ def channel_specificity(output, target, to_scalar=False, **kwargs):
         return score
 
 
-def channel_hausdorff(output, target, **kwargs):
+def channel_hausdorff(output, target):
     '''
     output, target are float values and contain 0s and 1s only
     '''
@@ -747,7 +747,7 @@ def channel_hausdorff(output, target, **kwargs):
     elif output_zeros or target_zeros:
         return np.linalg.norm([entry -1 for entry in output.shape])
     else:
-        return hd95(output, target, **kwargs)
+        return hd95(output, target)
 
 def channel_dice(output, target, smooth=1e-7, to_scalar=False, mirrored=False, **kwargs):
     # this dice is appropriate for  a single channel
