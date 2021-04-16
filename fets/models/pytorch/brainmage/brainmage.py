@@ -426,7 +426,7 @@ class BrainMaGeModel(PyTorchFLModel):
     def validate(self, use_tqdm=False):
         
         # dice results are dictionaries (keys provided by self.validation_output_keys)
-        total_valscore = {key: 0 for key in self.validation_output_keys}
+        valscores = {key: [] for key in self.validation_output_keys}
         
         val_loader = self.data.get_val_loader()
 
@@ -474,12 +474,9 @@ class BrainMaGeModel(PyTorchFLModel):
 
             # the dice results here are dictionaries (sum up the totals)
             for key in self.validation_output_keys:
-                total_valscore[key] = total_valscore[key] + current_valscore[key]
+                valscores[key].append(current_valscore[key])
                 
-        #Computing the average dice for all values of total_dice dict
-        average_valscore = {key: value/len(val_loader) for key, value in total_valscore.items()}
-
-        return average_valscore
+        return valscores
 
 
     
