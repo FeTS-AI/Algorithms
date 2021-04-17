@@ -9,6 +9,16 @@ aggregator_object_init:
   init_kwargs:
     rounds_to_train: 200
     model_directory: fets_phase2_1
+    minimum_reporting: 15
+    straggler_cutoff_time: 8100
+    runtime_aggregator_config_dir: runtime_agg_config
+    runtime_configurable_params: 
+      - collaborator_common_names
+      - rounds_to_train
+      - minimum_reporting
+      - straggler_cutoff_time
+      - send_metadata_to_clients
+      - save_all_models_path
     model_selection_val_keys: ['binary_DICE_ET', 
                                'binary_DICE_TC', 
                                'binary_DICE_WT']
@@ -47,7 +57,7 @@ data_object_init:
     psize: [128, 128, 128]
     q_samples_per_volume: 1
     q_verbose: False
-    split_instance_dirname: 'fets_phase1_split_1'
+    split_instance_dirname: 'fets_phase2_split_1'
     np_split_seed: 8950
     allow_auto_split: True
     class_list: ['4', '1||4', '1||2||4']

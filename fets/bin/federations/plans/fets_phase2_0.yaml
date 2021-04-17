@@ -8,10 +8,7 @@
 aggregator_object_init:
   init_kwargs:
     rounds_to_train: 200
-    model_directory: fets_phase1_1
-    init_model_fname: pt_3dresunet_fets_phase1_init_1.pbuf 
-    latest_model_fname: pt_3dresunet_fets_phase1_latest_1.pbuf
-    best_model_fname: pt_3dresunet_fets_phase1_best_1.pbuf
+    model_directory: fets_phase2_0
     minimum_reporting: 15
     straggler_cutoff_time: 8100
     runtime_aggregator_config_dir: runtime_agg_config
@@ -37,8 +34,9 @@ model_object_init:
     opt: adam
     use_penalties: False
     validate_with_fine_grained_dice: True
+    sigmoid_input_multiplier: 20.0
     validation_function: 'fets_phase2_validation'
-  
+    
 collaborator_object_init:
   init_kwargs:
     polling_interval  : 4
@@ -51,15 +49,15 @@ network_object_init:
  
 data_object_init:
   class_to_init: fets.data.pytorch.gandlf_data.GANDLFData
-  data_name_in_local_config: fets_phase1
+  data_name_in_local_config: fets_phase2
   init_kwargs: 
     divisibility_factor: 16
     data_usage: 'train-val'
     patch_sampler: 'uniform'
-    psize: [64, 64, 64]
-    q_samples_per_volume: 8
+    psize: [128, 128, 128]
+    q_samples_per_volume: 1
     q_verbose: False
-    split_instance_dirname: 'fets_phase1_split_1'
+    split_instance_dirname: 'fets_phase2_split_1'
     np_split_seed: 8950
     allow_auto_split: True
     class_list: [0, 1, 2, 4]

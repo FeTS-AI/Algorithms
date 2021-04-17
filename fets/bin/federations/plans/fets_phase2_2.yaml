@@ -8,7 +8,17 @@
 aggregator_object_init:
   init_kwargs:
     rounds_to_train: 200
-    model_directory: fets_phase2_1
+    model_directory: fets_phase2_2
+    minimum_reporting: 15
+    straggler_cutoff_time: 8100
+    runtime_aggregator_config_dir: runtime_agg_config
+    runtime_configurable_params: 
+      - collaborator_common_names
+      - rounds_to_train
+      - minimum_reporting
+      - straggler_cutoff_time
+      - send_metadata_to_clients
+      - save_all_models_path
     model_selection_val_keys: ['binary_DICE_ET', 
                                'binary_DICE_TC', 
                                'binary_DICE_WT']
@@ -20,10 +30,11 @@ model_object_init:
     min_learning_rate: 0.00005
     max_learning_rate: 0.00005
     learning_rate_cycles_per_epoch: 2.0
-    loss_function: brats_dice_loss
+    loss_function: mirrored_brats_dice_loss
     opt: adam
     use_penalties: False
     validate_with_fine_grained_dice: True
+    sigmoid_input_multiplier: 20.0
     validation_function: 'fets_phase2_validation'
 
 collaborator_object_init:
@@ -43,12 +54,10 @@ data_object_init:
     divisibility_factor: 16
     data_usage: 'train-val'
     patch_sampler: 'uniform'
-    psize: [64, 64, 64]
-    batch_size: 8
-    q_max_length: 16
-    q_samples_per_volume: 4
+    psize: [128, 128, 128]
+    q_samples_per_volume: 1
     q_verbose: False
-    split_instance_dirname: 'fets_phase1_split_1'
+    split_instance_dirname: 'fets_phase2_split_1'
     np_split_seed: 8950
     allow_auto_split: True
     class_list: ['4', '1||4', '1||2||4']
@@ -58,6 +67,9 @@ data_object_init:
         'std': 0.1
         'probability': 0.2
       'rotate_90':
+        'axis': [1, 2, 3]
+        'probability': 0.5
+      'rotate_180': 
         'axis': [1, 2, 3]
         'probability': 0.5
       'flip':
