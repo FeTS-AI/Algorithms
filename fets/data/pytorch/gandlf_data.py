@@ -730,22 +730,55 @@ class GANDLFData(object):
         
         return output
 
-    def write_outputs(self, outputs, metadata, output_file_tag):
+    def write_outputs(self, outputs, dirpath, class_axis=1):
         for idx, output in enumerate(outputs):
-            dir_path = metadata["dir_path"][idx]
-            base_fname = os.path.basename(dir_path)
-            fpath = os.path.join(dir_path, base_fname + "_" + output_file_tag + ".nii.gz")
-            
-            # process float outputs (accros output channels), providing labels as defined in values of self.class_label_map
-            output = new_labels_from_float_output(array=output,class_label_map=self.class_label_map, binary_classification=self.binary_classification)
-            
-            # recovering from the metadata what the oringal input shape was
-            original_input_shape = []
-            original_input_shape.append(metadata["original_x_dim"].numpy()[idx])
-            original_input_shape.append(metadata["original_y_dim"].numpy()[idx])
-            original_input_shape.append(metadata["original_z_dim"].numpy()[idx])
-            slices = [slice(0,original_input_shape[n]) for n in range(3)]
+            fpath = os.path.join(dir_path, "output_" + str(idx) + ".nii.gz")
 
+            # sanity check
+            if output.shape[class_axis] != len(class_list):
+                    raise ValueError('The provided output does not have the softmax applied along {} as assumed.'.format(class_axis))
+            
+            # process float outputs into 0, 1, 2, 4 original labels
+            if self.class_list == [0, 1, 2, 4]:
+                # here the output should have a multi dim channel enumerating class softmax along class_axis axis
+                # check that softmax was used
+                if np.all(np.sum(output, axis=class_axis)==1):
+                    raise ValueError('The provided output does not appear to have softmax along class_axis axis as assumed.'.format(class_axis)) 
+                # infer label from argmax
+                idx_array = np.argmax(array, axis=class_axis)
+                new_output = idx_array.apply_(lambda idx : class_list[idx])
+            elif self.class_list == ['4', '1||4', '1||2||4']:((
+                # FIXME: This is one way to infer the original labels (is this the best way?)
+
+                new_shape = [length for idx, length in enumerate(output.shape) if idx != class_axis]
+                
+                # initializations
+                new_output = np.zeros(new_shape)
+                slices = [slice(None) for _ in output.shape]
+
+                # write in 4's indicated by ET channel of class_axis
+                slices[class_axis] = 0  # 0 is ET channel
+                locations_of_4s = output[tuple(slices)]==1  # 1 indicating YES for ET
+                new_output[locations_of_4s] = 4
+
+                # write in 1's indicated by TC but not already labeled 4
+                slices[class_axis] = 1  # 1 is the TC channel
+                locations_of_TC = output[tuple(slices)]==1  # 1 indicating YES for TC
+                locations_of_1s = np.logical_and(locations_of_TC, ~locations_of_4s)
+                new_output[locations_of_1s] = 1
+
+                # write in 2's indicated by WT but not already labeled 1's or 4's
+                slices[class_axis] = 2  # 2 is WT channel
+                locations_of_WT = output[tuple(slices)]==1  # 1 indicating YES for WT
+                locations_of_1or4 = np.logical_or(locations_of_1s, locations_of_4s)
+                locations_of_2s = np.logical_and(locations_of_WT, ~locations_of_1or4)
+                new_output[locations_of_2s] = 2
+
+                # sanity check
+                np.sum(new_output != 0) == np.sum(np.amax(output, axis=class_axis))
+            else:
+                raise ValueError('Class list {} not currently supported.'.format(self.class_list))
+            
             # now crop to original shape (dependency on how original zero padding was done)
             output = output[tuple(slices)]
 

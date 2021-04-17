@@ -426,7 +426,9 @@ class BrainMaGeModel(PyTorchFLModel):
     def validate(self, use_tqdm=False, save_outputs=False, model_id=None, model_version=None, local_outputs_directory=None):
         
         if save_outputs:
-            if model_id is None, model_versionis None=None, local_outputs_directory
+            if (model_id is None) or (model_version is None) (local_outputs_directory is None):
+                raise ValueError('All of model_id, model_version, and local_outputs_directory need to be defined when using save_outputs.')
+            outputs = []
 
         # dice results are dictionaries (keys provided by self.validation_output_keys)
         valscores = {key: [] for key in self.validation_output_keys}
@@ -438,9 +440,6 @@ class BrainMaGeModel(PyTorchFLModel):
 
         if use_tqdm:
             val_loader = tqdm.tqdm(val_loader, desc="validate")
-
-        if save_outputs == True:
-            outputs = []
 
         for subject in val_loader:
             # this is when we are using pt_brainmagedata
@@ -461,8 +460,8 @@ class BrainMaGeModel(PyTorchFLModel):
                 else:
                     output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                                    features=features)
-
-                    
+            if save_outputs:
+                outputs.append(output.numpy())   
                 
             # one-hot encoding of ground truth
             mask = one_hot(mask, self.data.class_list).float()
@@ -481,6 +480,31 @@ class BrainMaGeModel(PyTorchFLModel):
             # the dice results here are dictionaries (sum up the totals)
             for key in self.validation_output_keys:
                 valscores[key].append(current_valscore[key])
+
+            if save_outputs:
+                model_id=None, model_version=None, local_outputs_directory
+                attempted_instance = 0
+                if not os.path.exists(local_outputs_directory):
+                    os.mkdir(local_outputs_directory)
+                output_pardir = os.path.join(local_outputs_directory, model_id)
+                if not os.path.exists(output_pardir):
+                    os.mkdir(output_pardir)
+                subdir_base = os.path.join(output_pardir, model_version + '_')
+                found_unused_subdir = False
+                instance = -1
+                subdirpath_to_use = None
+                while (not found_unused_subdir) and (instance < 10):
+                    instance += 1
+                   subdir = subdir_base + str(instance)
+                    if os.path.exists(subdir):
+                        continue
+                    else: 
+                        os.mkdir(subdir)
+                        subdirpath_to_use = subdir
+                        found_unused_subdir = True
+                if not found_unused_subdir:
+                    raise ValueError('Already have 10 model output subdirs under {} for model {} and version {}.'.format(output_pardir, model_id, model_version))
+                self.data.write_outputs(outputs=outputs, dirpath=subdirpath_to_use)
                 
         return valscores
 
