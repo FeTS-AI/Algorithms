@@ -730,6 +730,38 @@ class GANDLFData(object):
         
         return output
 
+    def write_outputs(self, outputs, metadata, output_file_tag):
+        for idx, output in enumerate(outputs):
+            dir_path = metadata["dir_path"][idx]
+            base_fname = os.path.basename(dir_path)
+            fpath = os.path.join(dir_path, base_fname + "_" + output_file_tag + ".nii.gz")
+            
+            # process float outputs (accros output channels), providing labels as defined in values of self.class_label_map
+            output = new_labels_from_float_output(array=output,class_label_map=self.class_label_map, binary_classification=self.binary_classification)
+            
+            # recovering from the metadata what the oringal input shape was
+            original_input_shape = []
+            original_input_shape.append(metadata["original_x_dim"].numpy()[idx])
+            original_input_shape.append(metadata["original_y_dim"].numpy()[idx])
+            original_input_shape.append(metadata["original_z_dim"].numpy()[idx])
+            slices = [slice(0,original_input_shape[n]) for n in range(3)]
+
+            # now crop to original shape (dependency on how original zero padding was done)
+            output = output[tuple(slices)]
+
+            # convert array to SimpleITK image 
+            image = sitk.GetImageFromArray(output)
+              
+            # get header info from an input image
+            allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
+            input_image_fpath = allFiles['T1']
+            input_image_fpath = find_file_or_with_extension(input_image_fpath)
+            input_image= sitk.ReadImage(input_image_fpath)
+            image.CopyInformation(input_image)
+
+            print("Writing inference NIfTI image of shape {} to {}".format(output.shape, fpath))
+            sitk.WriteImage(image, fpath)
+
     def get_train_loader(self):
         return self.train_loader
     

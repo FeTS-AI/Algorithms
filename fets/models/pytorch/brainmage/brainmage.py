@@ -423,8 +423,11 @@ class BrainMaGeModel(PyTorchFLModel):
         # FIXME: In a federation we may want the collaborators data size to be modified when backprop is skipped.
         return {"loss": total_loss / num_subject_grads, "num_nan_losses": num_nan_losses, "num_samples_used": num_subjects }
 
-    def validate(self, use_tqdm=False):
+    def validate(self, use_tqdm=False, save_outputs=False, model_id=None, model_version=None, local_outputs_directory=None):
         
+        if save_outputs:
+            if model_id is None, model_versionis None=None, local_outputs_directory
+
         # dice results are dictionaries (keys provided by self.validation_output_keys)
         valscores = {key: [] for key in self.validation_output_keys}
         
@@ -435,6 +438,9 @@ class BrainMaGeModel(PyTorchFLModel):
 
         if use_tqdm:
             val_loader = tqdm.tqdm(val_loader, desc="validate")
+
+        if save_outputs == True:
+            outputs = []
 
         for subject in val_loader:
             # this is when we are using pt_brainmagedata
@@ -477,6 +483,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 valscores[key].append(current_valscore[key])
                 
         return valscores
+
 
 
     
