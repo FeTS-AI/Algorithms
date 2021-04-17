@@ -779,20 +779,10 @@ class GANDLFData(object):
             else:
                 raise ValueError('Class list {} not currently supported.'.format(self.class_list))
             
-            # now crop to original shape (dependency on how original zero padding was done)
-            output = output[tuple(slices)]
-
             # convert array to SimpleITK image 
-            image = sitk.GetImageFromArray(output)
-              
-            # get header info from an input image
-            allFiles = get_appropriate_file_paths_from_subject_dir(dir_path)
-            input_image_fpath = allFiles['T1']
-            input_image_fpath = find_file_or_with_extension(input_image_fpath)
-            input_image= sitk.ReadImage(input_image_fpath)
-            image.CopyInformation(input_image)
+            image = sitk.GetImageFromArray(new_output)
 
-            print("Writing inference NIfTI image of shape {} to {}".format(output.shape, fpath))
+            print("Writing inference NIfTI image of shape {} to {}".format(new_output.shape, fpath))
             sitk.WriteImage(image, fpath)
 
     def get_train_loader(self):
