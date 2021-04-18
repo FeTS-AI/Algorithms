@@ -493,12 +493,13 @@ class BrainMaGeModel(PyTorchFLModel):
                 subdirpath_to_use = None
                 while (not found_unused_subdir) and (instance < 10):
                     instance += 1
-                    subdir = subdir_base + str(instance)
-                    if os.path.exists(subdir):
+                    subdirpath = subdir_base + str(instance)
+                    if os.path.exists(subdirpath):
                         continue
                     else: 
-                        os.mkdir(subdir)
-                        subdirpath_to_use = subdir
+                        os.mkdir(subdirpath)
+                        print("DEBUG: Created subdirpath: ", subdirpath)
+                        subdirpath_to_use = subdirpath
                         found_unused_subdir = True
                 if not found_unused_subdir:
                     raise ValueError('Already have 10 model output subdirs under {} for model {} and version {}.'.format(output_pardir, model_id, model_version))
