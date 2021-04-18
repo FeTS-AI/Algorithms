@@ -502,7 +502,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         found_unused_subdir = True
                 if not found_unused_subdir:
                     raise ValueError('Already have 10 model output subdirs under {} for model {} and version {}.'.format(output_pardir, model_id, model_version))
-                self.data.write_outputs(outputs=outputs, dirpath=subdirpath_to_use)
+                self.data.write_outputs(outputs=outputs, dirpath=subdirpath_to_use, class_list=self.data.class_list)
                 
         return valscores
 

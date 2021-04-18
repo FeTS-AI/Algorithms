@@ -12,6 +12,8 @@ import pandas as pd
 
 from torch.utils.data import DataLoader
 
+import SimpleITK as sitk
+
 # put GANDLF in as a submodule staat pip install
 from GANDLF.data.ImagesFromDataFrame import ImagesFromDataFrame
 
@@ -730,9 +732,9 @@ class GANDLFData(object):
         
         return output
 
-    def write_outputs(self, outputs, dirpath, class_axis=1):
+    def write_outputs(self, outputs, dirpath, class_list,  class_axis=1):
         for idx, output in enumerate(outputs):
-            fpath = os.path.join(dir_path, "output_" + str(idx) + ".nii.gz")
+            fpath = os.path.join(dirpath, "output_" + str(idx) + ".nii.gz")
 
             # sanity check
             if output.shape[class_axis] != len(class_list):
@@ -743,9 +745,9 @@ class GANDLFData(object):
                 # here the output should have a multi dim channel enumerating class softmax along class_axis axis
                 # check that softmax was used
                 if np.all(np.sum(output, axis=class_axis)==1):
-                    raise ValueError('The provided output does not appear to have softmax along class_axis axis as assumed.'.format(class_axis)) 
+                    raise ValueError('The provided output does not appear to have softmax along {} axis as assumed.'.format(class_axis)) 
                 # infer label from argmax
-                idx_array = np.argmax(array, axis=class_axis)
+                idx_array = np.argmax(output, axis=class_axis)
                 new_output = idx_array.apply_(lambda idx : class_list[idx])
             elif self.class_list == ['4', '1||4', '1||2||4']:
                 # FIXME: This is one way to infer the original labels (is this the best way?)
