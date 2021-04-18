@@ -485,7 +485,7 @@ def brats_hausdorff(output,
         target_whole = target_whole.numpy().astype(np.int32) 
     else:
         # I don't believe converting to and from numpy to utilize the channel_hausdorff function can be tracked in the graph 
-        raise ValueError('Computing BraTS hausdorff for torch tensors in the compute graph is currntly not supported.')
+        raise ValueError('Computing BraTS hausdorff for torch tensors in the compute graph is currently not supported.')
         
     
 
@@ -742,7 +742,7 @@ def channel_hausdorff(output, target):
     # if both arrays are all zero, return 0
     if output_zeros and target_zeros:
         return 0
-    # if exaclty one is all zeros, return max distance across volume (distance between corners)
+    # if exactly one is all zeros, return max distance across volume (distance between corners)
     elif output_zeros or target_zeros:
         return np.linalg.norm([entry -1 for entry in output.shape])
     else:
