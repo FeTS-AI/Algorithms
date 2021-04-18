@@ -426,7 +426,7 @@ class BrainMaGeModel(PyTorchFLModel):
     def validate(self, use_tqdm=False, save_outputs=False, model_id=None, model_version=None, local_outputs_directory=None):
         
         if save_outputs:
-            if (model_id is None) or (model_version is None) (local_outputs_directory is None):
+            if (model_id is None) or (model_version is None) or (local_outputs_directory is None):
                 raise ValueError('All of model_id, model_version, and local_outputs_directory need to be defined when using save_outputs.')
             outputs = []
 
