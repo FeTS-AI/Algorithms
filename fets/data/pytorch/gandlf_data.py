@@ -747,7 +747,7 @@ class GANDLFData(object):
                 # infer label from argmax
                 idx_array = np.argmax(array, axis=class_axis)
                 new_output = idx_array.apply_(lambda idx : class_list[idx])
-            elif self.class_list == ['4', '1||4', '1||2||4']:((
+            elif self.class_list == ['4', '1||4', '1||2||4']:
                 # FIXME: This is one way to infer the original labels (is this the best way?)
 
                 new_shape = [length for idx, length in enumerate(output.shape) if idx != class_axis]

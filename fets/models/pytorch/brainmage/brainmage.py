@@ -481,9 +481,7 @@ class BrainMaGeModel(PyTorchFLModel):
             for key in self.validation_output_keys:
                 valscores[key].append(current_valscore[key])
 
-            if save_outputs:
-                model_id=None, model_version=None, local_outputs_directory
-                attempted_instance = 0
+        if save_outputs:
                 if not os.path.exists(local_outputs_directory):
                     os.mkdir(local_outputs_directory)
                 output_pardir = os.path.join(local_outputs_directory, model_id)
@@ -495,7 +493,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 subdirpath_to_use = None
                 while (not found_unused_subdir) and (instance < 10):
                     instance += 1
-                   subdir = subdir_base + str(instance)
+                    subdir = subdir_base + str(instance)
                     if os.path.exists(subdir):
                         continue
                     else: 
