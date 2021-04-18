@@ -498,7 +498,6 @@ class BrainMaGeModel(PyTorchFLModel):
                         continue
                     else: 
                         os.mkdir(subdirpath)
-                        print("DEBUG: Created subdirpath: ", subdirpath)
                         subdirpath_to_use = subdirpath
                         found_unused_subdir = True
                 if not found_unused_subdir:
