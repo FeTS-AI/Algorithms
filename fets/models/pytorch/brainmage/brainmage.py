@@ -487,7 +487,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 output_pardir = os.path.join(local_outputs_directory, model_id)
                 if not os.path.exists(output_pardir):
                     os.mkdir(output_pardir)
-                subdir_base = os.path.join(output_pardir, str(model_version) + '_')
+                subdir_base = os.path.join(output_pardir, 'model_version_' + str(model_version) + '_output_for_validation_instance_')
                 found_unused_subdir = False
                 instance = -1
                 subdirpath_to_use = None
