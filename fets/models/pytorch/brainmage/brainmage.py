@@ -509,9 +509,11 @@ class BrainMaGeModel(PyTorchFLModel):
                     raise ValueError('Already have 10 model output subdirs under {} for model {} and version {}.'.format(output_pardir, model_id, model_version))
                 self.data.write_outputs(outputs=outputs, dirpath=subdirpath_to_use, class_list=self.data.class_list)
 
-        if self.output_per_example_valscores:        
+        if self.output_per_example_valscores:
+            print("Producing per-example validation scores per key.")        
             return valscores
         else:
+            print("Producing single float validation scores per key.")
             return {key: np.mean(scores_list) for key, scores_list in valscores.items()}
 
 
