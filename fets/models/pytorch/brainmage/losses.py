@@ -63,14 +63,13 @@ def check_classes_enumerated_along_correct_axis(tensor, axis, num_classes):
 
 
 def check_axis_sum_is_one_single_tensor(tensor, dim):
-    print("checking for sum one: ave, std", torch.mean(torch.sum(tensor, dim=dim)), torch.std(torch.sum(tensor, dim=dim)))
-    if not torch.all(torch.sum(tensor, dim=dim) == 1.0):
+    if not torch.all(torch.sum(tensor, dim=dim) - 1.0 < 1e-6):
         raise ValueError('The provided tensor of shape {} does not indicate softmax output along the provided axis {}.'.format(tensor.shape, dim))
 
 
 def check_axis_sum_is_one(output, target, dim):
-    sum_one_for_output = torch.all(torch.sum(output, dim=dim) == 1.0)
-    sum_one_for_target = torch.all(torch.sum(target, dim=dim) == 1.0)
+    sum_one_for_output = torch.all(torch.sum(output, dim=dim) - 1.0 < 1e-6)
+    sum_one_for_target = torch.all(torch.sum(target, dim=dim) - 1.0 < 1e-6)
     if sum_one_for_output:
         if not sum_one_for_target:
             raise ValueError('The provided target does not indicate softmax output along the provided axis.')
