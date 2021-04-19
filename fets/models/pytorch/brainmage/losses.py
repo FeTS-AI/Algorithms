@@ -64,7 +64,7 @@ def check_classes_enumerated_along_correct_axis(tensor, axis, num_classes):
 
 def check_axis_sum_is_one_single_tensor(tensor, dim):
     if not torch.all(torch.sum(tensor, dim=dim) == 1.0):
-        raise ValueError('The provided tensor does not indicate softmax output along the provided axis.')
+        raise ValueError('The provided tensor of shape {} does not indicate softmax output along the provided axis {}.'.format(tensor.shape, dim))
 
 
 def check_axis_sum_is_one(output, target, dim):
