@@ -43,6 +43,7 @@ collaborator_object_init:
     opt_treatment     : 'CONTINUE_LOCAL'
     send_model_deltas : False
     epochs_per_round  : 1.0
+    local_outputs_savings_interval: 10
 
 network_object_init:
   defaults_file: defaults/network.yaml
