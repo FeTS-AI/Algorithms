@@ -102,6 +102,7 @@ class BrainMaGeModel(PyTorchFLModel):
                  kmp_affinity=False, 
                  loss_function_kwargs={}, 
                  validation_function_kwargs={},
+                 output_per_example_valscores=True,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
 
@@ -154,6 +155,10 @@ class BrainMaGeModel(PyTorchFLModel):
         # Determines if we want our validation results to include separate values for whole-tumor, tumor-core, and
         # enhancing tumor, or to simply report the average of those
         self.validate_with_fine_grained_dice = validate_with_fine_grained_dice
+
+        # Do we produce a list of validation scores (over samples of the val loader), or
+        # do we output a single score resulting from the average of these?
+        self.output_per_example_valscores = output_per_example_valscores
         
         ############### CHOOSING THE LOSS AND VALIDATION FUNCTIONS ###################
 
@@ -503,8 +508,11 @@ class BrainMaGeModel(PyTorchFLModel):
                 if not found_unused_subdir:
                     raise ValueError('Already have 10 model output subdirs under {} for model {} and version {}.'.format(output_pardir, model_id, model_version))
                 self.data.write_outputs(outputs=outputs, dirpath=subdirpath_to_use, class_list=self.data.class_list)
-                
-        return valscores
+
+        if self.output_per_example_valscores:        
+            return valscores
+        else:
+            return {key: np.mean(scores_list) for key, scores_list in valscores.items()}
 
 
 
