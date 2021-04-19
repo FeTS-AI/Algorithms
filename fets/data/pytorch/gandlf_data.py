@@ -603,9 +603,9 @@ class GANDLFData(object):
                                    preprocessing=self.preprocessing, 
                                    in_memory=self.in_memory)
         if train:
-            loader = DataLoader(data, batch_size=self.batch_size)
+            loader = DataLoader(data, shuffle=True, batch_size=self.batch_size)
         else:
-            loader = DataLoader(data, batch_size=1)
+            loader = DataLoader(data, shuffle=False, batch_size=1)
         
         companion_loader = None
         if train:
