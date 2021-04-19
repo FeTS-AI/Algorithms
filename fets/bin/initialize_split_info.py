@@ -7,7 +7,7 @@ import os
 from openfl.flplan import parse_fl_plan, create_data_object_with_explicit_data_path
 
 
-def main(plan, data_dir):
+def main(plan_path, data_path):
     """Creates the data split assosciated to a particular flplan using data found in data_dir
 
     Args:
@@ -16,14 +16,14 @@ def main(plan, data_dir):
         
     """
     
-    flplan = parse_fl_plan(os.path.join(plan_dir, plan))
+    flplan = parse_fl_plan(os.path.join(plan_path))
 
-    data_object = create_data_object_with_explicit_data_path(flplan, data_path=data_dir)
+    create_data_object_with_explicit_data_path(flplan, data_path=data_path)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--plan', '-p', type=str, required=True)
-    # FIXME: data_dir should be data_path
-    parser.add_argument('--data_dir', '-d', type=str, default=None)
+    parser.add_argument('--plan_path', '-pp', type=str, required=True)
+    parser.add_argument('--data_path', '-dp', type=str, default=None)
+    args = parser.parse_args()
     main(**vars(args))
