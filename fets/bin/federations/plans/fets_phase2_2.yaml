@@ -12,13 +12,16 @@ aggregator_object_init:
     minimum_reporting: 15
     straggler_cutoff_time: 8100
     runtime_aggregator_config_dir: runtime_agg_config
+    backup_path: '/mnt/fets_phase2_models_and_stats'
     runtime_configurable_params: 
       - collaborator_common_names
       - rounds_to_train
       - minimum_reporting
       - straggler_cutoff_time
       - send_metadata_to_clients
-      - save_all_models_path
+      - backup_path
+      - enrollment_period
+      - reserved
     model_selection_val_keys: ['binary_DICE_ET', 
                                'binary_DICE_TC', 
                                'binary_DICE_WT']
