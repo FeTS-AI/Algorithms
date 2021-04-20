@@ -36,7 +36,10 @@ from GANDLF.utils import one_hot
 
 from openfl import load_yaml
 from openfl.models.pytorch import PyTorchFLModel
-from .losses import MCD_loss, DCCE, CE, MCD_MSE_loss, dice_loss, average_dice_over_channels, clinical_dice_loss, clinical_dice_log_loss, clinical_dice
+from .losses import MCD_loss, MCD_MSE_loss, dice_loss
+from .losses import brats_dice_loss, brats_dice_log_loss, brats_dice, brats_dice_loss_w_background, brats_dice_loss_w_crossentropy
+from .losses import background_dice_loss, crossentropy, dice_loss_skipping_first_channel, dice_loss_all_channels, mirrored_brats_dice_loss
+from .losses import fets_phase2_validation
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
@@ -84,7 +87,8 @@ class BrainMaGeModel(PyTorchFLModel):
                  min_learning_rate, 
                  max_learning_rate,
                  learning_rate_cycles_per_epoch,
-                 loss_function, 
+                 loss_function,
+                 validation_function, 
                  opt, 
                  device='cpu',
                  n_classes=4,
@@ -95,7 +99,10 @@ class BrainMaGeModel(PyTorchFLModel):
                  validate_without_patches = False,
                  validate_with_fine_grained_dice = True, 
                  torch_threads=None, 
-                 kmp_affinity=False,
+                 kmp_affinity=False, 
+                 loss_function_kwargs={}, 
+                 validation_function_kwargs={},
+                 output_per_example_valscores=True,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
 
@@ -128,17 +135,17 @@ class BrainMaGeModel(PyTorchFLModel):
         self.learning_rate_cycles_per_epoch = learning_rate_cycles_per_epoch
 
         self.which_loss = loss_function
+        self.which_validation = validation_function
         self.opt = opt
-        # model parameters
-        self.binary_classification = self.n_classes == 2
-        if self.binary_classification:
-            self.label_channels = 1
-        else:
-            self.label_channels = self.n_classes
+        #TODO: Binary classficition with one channel is currently not supported
+        self.label_channels = self.n_classes
         self.base_filters = base_filters
         self.smooth = smooth
         self.which_model = self.__repr__()
         self.use_panalties = use_penalties
+
+        self.loss_function_kwargs = loss_function_kwargs
+        self.validation_function_kwargs = validation_function_kwargs
 
         # used only when using the gandlf_data object
         # (will we crop external zero-planes, infer, then pad output with zeros OR
@@ -148,20 +155,63 @@ class BrainMaGeModel(PyTorchFLModel):
         # Determines if we want our validation results to include separate values for whole-tumor, tumor-core, and
         # enhancing tumor, or to simply report the average of those
         self.validate_with_fine_grained_dice = validate_with_fine_grained_dice
+
+        # Do we produce a list of validation scores (over samples of the val loader), or
+        # do we output a single score resulting from the average of these?
+        self.output_per_example_valscores = output_per_example_valscores
         
-        ############### CHOOSING THE LOSS FUNCTION ###################
-        if self.which_loss == 'dc':
-            self.loss_fn  = MCD_loss
-        elif self.which_loss == 'dcce':
-            self.loss_fn  = DCCE
-        elif self.which_loss == 'ce':
-            self.loss_fn = CE
-        elif self.which_loss == 'mse':
-            self.loss_fn = MCD_MSE_loss
-        elif self.which_loss == 'cdl':
-            self.loss_fn = clinical_dice_loss
-        elif self.which_loss == 'cdll':
-            self.loss_fn = clinical_dice_log_loss
+        ############### CHOOSING THE LOSS AND VALIDATION FUNCTIONS ###################
+
+        # hard coded for now
+        #FIXME: Note dependency on this and loss_function_kwargs on total_valscore definition in validate method
+        # I try to track this with self.validation_output_keys (below)
+        if self.which_validation == 'brats_dice':
+            self.validation_function = brats_dice
+            if self.validate_with_fine_grained_dice:
+                self.validation_output_keys = ['float_DICE_ET', 
+                                               'float_DICE_TC', 
+                                               'float_DICE_WT']
+            else:
+                self.validation_output_keys = ['float_DICE_AVG(ET,TC,WT)']
+        elif self.which_validation == 'fets_phase2_validation':
+            self.validation_function = fets_phase2_validation
+            self.validation_output_keys = ['float_DICE_ET', 
+                                           'float_DICE_TC', 
+                                           'float_DICE_WT',
+                                           'binary_DICE_ET', 
+                                           'binary_DICE_TC', 
+                                           'binary_DICE_WT', 
+                                           'binary_Hausdorff95_ET', 
+                                           'binary_Hausdorff95_TC', 
+                                           'binary_Hausdorff95_WT', 
+                                           'binary_Sensitivity_ET', 
+                                           'binary_Sensitivity_TC', 
+                                           'binary_Sensitivity_WT', 
+                                           'binary_Specificity_ET', 
+                                           'binary_Specificity_TC', 
+                                           'binary_Specificity_WT']
+        else:
+            raise ValueError('The validation function {} is not currently supported'.format(self.which_validation))
+
+        # old dc is now dice_loss_skipping_first_channel
+        if self.which_loss == 'brats_dice_loss':
+            self.loss_fn = brats_dice_loss
+        elif self.which_loss == 'brats_dice_log_loss':
+            self.loss_fn = brats_dice_log_loss
+        elif self.which_loss == 'brats_dice_loss_w_background':
+            self.loss_fn = brats_dice_loss_w_background
+        elif self.which_loss == 'brats_dice_loss_w_crossentropy':
+            self.loss_fn = brats_dice_loss_w_crossentropy
+        elif self.which_loss == 'crossentropy':
+            self.loss_fn = crossentropy
+        elif self.which_loss == 'background_dice_loss':
+            self.loss_fn = background_dice_loss
+        elif self.which_loss == 'dice_loss_skipping_first_channel':
+            self.loss_fn = dice_loss_skipping_first_channel
+        elif self.which_loss == 'dice_loss_all_channels':
+            self.loss_fn = dice_loss_all_channels
+        elif self.which_loss == 'mirrored_brats_dice_loss':
+            self.loss_fn = mirrored_brats_dice_loss
         else:
             raise ValueError('{} loss is not supported'.format(self.which_loss))
 
@@ -183,12 +233,9 @@ class BrainMaGeModel(PyTorchFLModel):
                                         betas = (0.9,0.999), 
                                         weight_decay = 0.00005)
 
-        # If this is removed, need to redo the cylce_length calculation below
-        assert self.data.batch_size == 1
-
         # TODO: To sync learning rate cycle across collaborators, we assume each collaborator is training 
         # a set fraction of an epoch (rather than a set number of batches) otherwise use batch_num based cycle length
-        cycle_length =  int(float(self.data.get_training_data_size()) / float(self.learning_rate_cycles_per_epoch))
+        cycle_length =  int((float(self.data.get_training_data_size())/float(self.data.batch_size)) / float(self.learning_rate_cycles_per_epoch))
         if cycle_length == 0:
             if self.data.get_training_data_size == 0:
                 cycle_length = 1
@@ -251,7 +298,7 @@ class BrainMaGeModel(PyTorchFLModel):
             # accumulate dice weights for each label
             mask = subject['label'][torchio.DATA]
             one_hot_mask = one_hot(mask, self.data.class_list)
-            for i in range(1, self.n_classes):
+            for i in range(0, self.n_classes):
                 currentNumber = torch.nonzero(one_hot_mask[:,i,:,:,:], as_tuple=False).size(0)
                 dice_weights_dict[i] = dice_weights_dict[i] + currentNumber # class-specific non-zero voxels
                 total_nonZeroVoxels = total_nonZeroVoxels + currentNumber # total number of non-zero voxels to be considered
@@ -283,7 +330,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
         with torch.no_grad():
             features = features.to(device)
-            output = self(features.float())
+            output = self(features)
             output = output.cpu()
         return output
 
@@ -328,8 +375,8 @@ class BrainMaGeModel(PyTorchFLModel):
                 if subject_num >= num_subjects:
                     break
                 else:
-                    if device.type == 'cuda':
-                        print('=== Memory (allocated; cached) : ', round(torch.cuda.memory_allocated(0)/1024**3, 1), '; ', round(torch.cuda.memory_reserved(0)/1024**3, 1))
+                    # if device.type == 'cuda':
+                        # print('=== Memory (allocated; cached) : ', round(torch.cuda.memory_allocated(0)/1024**3, 1), '; ', round(torch.cuda.memory_reserved(0)/1024**3, 1))
                     # Load the subject and its ground truth
                     # this is when we are using pt_brainmagedata
                     if ('features' in subject.keys()) and ('gt' in subject.keys()):
@@ -337,25 +384,29 @@ class BrainMaGeModel(PyTorchFLModel):
                         mask = subject['gt']
                     # this is when we are using gandlf loader   
                     else:
-                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                         mask = subject['label'][torchio.DATA]
 
-                    mask = one_hot(mask, self.data.class_list)
+                    mask = one_hot(mask, self.data.class_list).float()
                         
                     # Loading features into device
-                    features, mask = features.float().to(device), mask.float().to(device)
-                    # TODO: Variable class is deprecated - parameters to be given are the tensor, whether it requires grad and the function that created it   
-                    # features, mask = Variable(features, requires_grad = True), Variable(mask, requires_grad = True)
+                    features, mask = features.to(device), mask.to(device)
+                    
                     # Making sure that the optimizer has been reset
                     self.optimizer.zero_grad()
+
                     # Forward Propagation to get the output from the models
-                    
-                    # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
-                    #torch.cuda.empty_cache()
-                    
-                    output = self(features.float())
+                    output = self(features)
+
                     # Computing the loss
-                    loss = self.loss_fn(output.float(), mask.float(), num_classes=self.label_channels, weights=self.dice_penalty_dict, class_list=self.data.class_list, to_scalar=False)
+                    loss = self.loss_fn(output=output, 
+                                        target=mask, 
+                                        num_classes=self.label_channels, 
+                                        weights=self.dice_penalty_dict, 
+                                        class_list=self.data.class_list, 
+                                        to_scalar=False, 
+                                        **self.loss_function_kwargs)
+
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
                         num_nan_losses += 1
@@ -368,9 +419,6 @@ class BrainMaGeModel(PyTorchFLModel):
                         total_loss += loss
                     self.lr_scheduler.step()
 
-                    # TODO: Not recommended? (https://discuss.pytorch.org/t/about-torch-cuda-empty-cache/34232/6)will try without
-                    #torch.cuda.empty_cache()
-
                     subject_num += 1
 
         num_subject_grads = num_subjects - num_nan_losses
@@ -380,15 +428,15 @@ class BrainMaGeModel(PyTorchFLModel):
         # FIXME: In a federation we may want the collaborators data size to be modified when backprop is skipped.
         return {"loss": total_loss / num_subject_grads, "num_nan_losses": num_nan_losses, "num_samples_used": num_subjects }
 
-    def validate(self, use_tqdm=False):
+    def validate(self, use_tqdm=False, save_outputs=False, model_id=None, model_version=None, local_outputs_directory=None):
         
-        # dice results are dictionaries
-        if self.validate_with_fine_grained_dice:
-            # here keys will be: 'ET', 'WT', and 'TC'
-            total_dice = {'ET': 0, 'WT': 0, 'TC': 0}
-        else:
-            # here we only have one key: 'AVG(ET,WT,TC)'
-            total_dice = {'AVG(ET,WT,TC)': 0}
+        if save_outputs:
+            if (model_id is None) or (model_version is None) or (local_outputs_directory is None):
+                raise ValueError('All of model_id, model_version, and local_outputs_directory need to be defined when using save_outputs.')
+            outputs = []
+
+        # dice results are dictionaries (keys provided by self.validation_output_keys)
+        valscores = {key: [] for key in self.validation_output_keys}
         
         val_loader = self.data.get_val_loader()
 
@@ -408,7 +456,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
             # using the gandlf loader   
             else:
-                features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1)
+                features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                 mask = subject['label'][torchio.DATA]
 
                 if self.validate_without_patches:
@@ -417,30 +465,57 @@ class BrainMaGeModel(PyTorchFLModel):
                 else:
                     output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                                    features=features)
-
-                    
+            if save_outputs:
+                outputs.append(output.numpy())   
                 
             # one-hot encoding of ground truth
-            mask = one_hot(mask, self.data.class_list)
+            mask = one_hot(mask, self.data.class_list).float()
             
             # sanity check that the output and mask have the same shape
             if output.shape != mask.shape:
                 raise ValueError('Model output and ground truth mask are not the same shape.')
 
-            # curr_dice = average_dice_over_channels(output.float(), mask.float(), self.binary_classification).cpu().data.item()
-            current_dice = clinical_dice(output=output.float(), 
-                                         target=mask.float(), 
-                                         class_list=self.data.class_list, 
-                                         fine_grained=self.validate_with_fine_grained_dice, 
-                                         to_scalar=True)
-            # the dice results here are dictionaries (sum up the totals)
-            for key in total_dice:
-                total_dice[key] = total_dice[key] + current_dice[key]
-                
-        #Computing the average dice for all values of total_dice dict
-        average_dice = {key: value/len(val_loader) for key, value in total_dice.items()}
+            # FIXME: Create a more general losses.py module (with composability and aggregation)
+            current_valscore = self.validation_function(output=output, 
+                                                        target=mask, 
+                                                        class_list=self.data.class_list, 
+                                                        fine_grained=self.validate_with_fine_grained_dice, 
+                                                        **self.validation_function_kwargs)
 
-        return average_dice
+            # the dice results here are dictionaries (sum up the totals)
+            for key in self.validation_output_keys:
+                valscores[key].append(current_valscore[key])
+
+        if save_outputs:
+                if not os.path.exists(local_outputs_directory):
+                    os.mkdir(local_outputs_directory)
+                output_pardir = os.path.join(local_outputs_directory, model_id)
+                if not os.path.exists(output_pardir):
+                    os.mkdir(output_pardir)
+                subdir_base = os.path.join(output_pardir, 'model_version_' + str(model_version) + '_output_for_validation_instance_')
+                found_unused_subdir = False
+                instance = -1
+                subdirpath_to_use = None
+                while (not found_unused_subdir) and (instance < 10):
+                    instance += 1
+                    subdirpath = subdir_base + str(instance)
+                    if os.path.exists(subdirpath):
+                        continue
+                    else: 
+                        os.mkdir(subdirpath)
+                        subdirpath_to_use = subdirpath
+                        found_unused_subdir = True
+                if not found_unused_subdir:
+                    raise ValueError('Already have 10 model output subdirs under {} for model {} and version {}.'.format(output_pardir, model_id, model_version))
+                self.data.write_outputs(outputs=outputs, dirpath=subdirpath_to_use, class_list=self.data.class_list)
+
+        if self.output_per_example_valscores:
+            print("Producing per-example validation scores per key.")        
+            return valscores
+        else:
+            print("Producing single float validation scores per key.")
+            return {key: np.mean(scores_list) for key, scores_list in valscores.items()}
+
 
 
     

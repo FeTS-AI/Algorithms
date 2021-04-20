@@ -83,6 +83,9 @@ def new_labels_from_float_output(array, class_label_map, binary_classification):
         output[first_label_mask] = first_label
         output[~first_label_mask] = second_label
     else:
+        # FIXME: Only one class label map is in use that works here, need to generalize
+        if class_label_map != {0:0, 1:1, 2:2, 4:4}:
+            raise valueError('Fix this code to account for sigmoid activation before using.')
         # here the output has a multi dim channel along 0th axis 
         # (dimensions correspond to new_labels according to logic in one_hot)
         idx_array = np.argmax(array, axis=0)

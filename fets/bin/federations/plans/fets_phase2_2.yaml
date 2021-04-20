@@ -7,18 +7,24 @@
 
 aggregator_object_init:
   init_kwargs:
-    rounds_to_train: 1
-    init_model_fname: pt_3dresunet_fets_phase1_brats20pretrained_init_1.pbuf 
-    latest_model_fname: pt_3dresunet_fets_phase1_brats20pretrained_latest_1.pbuf
-    best_model_fname: pt_3dresunet_fets_phase1_brats20pretrained_best_1.pbuf
+    rounds_to_train: 200
+    model_directory: fets_phase2_2
+    minimum_reporting: 15
+    straggler_cutoff_time: 8100
     runtime_aggregator_config_dir: runtime_agg_config
+    backup_path: '/mnt/fets_phase2_models_and_stats'
     runtime_configurable_params: 
       - collaborator_common_names
       - rounds_to_train
       - minimum_reporting
       - straggler_cutoff_time
       - send_metadata_to_clients
-      - save_all_models_path
+      - backup_path
+      - enrollment_period
+      - reserved
+    model_selection_val_keys: ['binary_DICE_ET', 
+                               'binary_DICE_TC', 
+                               'binary_DICE_WT']
 
 model_object_init:
   class_to_init: fets.models.pytorch.pt_3dresunet.pt_3dresunet.PyTorch3DResUNet
@@ -27,10 +33,12 @@ model_object_init:
     min_learning_rate: 0.00005
     max_learning_rate: 0.00005
     learning_rate_cycles_per_epoch: 2.0
-    loss_function: brats_dice_loss
+    loss_function: mirrored_brats_dice_loss
     opt: adam
     use_penalties: False
     validate_with_fine_grained_dice: True
+    sigmoid_input_multiplier: 20.0
+    validation_function: 'fets_phase2_validation'
 
 collaborator_object_init:
   init_kwargs:
@@ -38,20 +46,14 @@ collaborator_object_init:
     opt_treatment     : 'CONTINUE_LOCAL'
     send_model_deltas : False
     epochs_per_round  : 1.0
-    # num_batches_per_round  : 1
+    local_outputs_savings_interval: 10
 
 network_object_init:
-  auto_port   : True
-  cert_folder : fetsfun
-  hash_salt   : fetsfun
-  init_kwargs :
-    agg_addr            : fetsfun
-    disable_tls         : True
-    disable_client_auth : True
+  defaults_file: defaults/network.yaml
  
 data_object_init:
   class_to_init: fets.data.pytorch.gandlf_data.GANDLFData
-  data_name_in_local_config: fets_phase1
+  data_name_in_local_config: fets_phase2
   init_kwargs: 
     divisibility_factor: 16
     data_usage: 'train-val'
@@ -59,10 +61,10 @@ data_object_init:
     psize: [128, 128, 128]
     q_samples_per_volume: 1
     q_verbose: False
-    split_instance_dirname: 'fets_phase1_split_1'
+    split_instance_dirname: 'fets_phase2_split_1'
     np_split_seed: 8950
     allow_auto_split: True
-    class_list: [0, 1, 2, 4]
+    class_list: ['4', '1||4', '1||2||4']
     data_augmentation:
       'noise':
         'mean': 0.0
@@ -80,9 +82,3 @@ data_object_init:
     data_preprocessing:
       'crop_external_zero_planes': null
       'normalize_nonZero_masked': null
-
-inference:
-  allowed: False
-  kwargs:
-    output_file_tag: 'fets_phase1_brats20pretrained_1_seg'
-  

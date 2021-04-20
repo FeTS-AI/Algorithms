@@ -3,7 +3,7 @@
 # TODO: Should the validation patch sampler be different from the training one?
 # FIXME: replace prints to stdout with logging.
 
-import os
+import os, pathlib
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
 import numpy as np
 import torch
@@ -11,6 +11,8 @@ import torchio
 import pandas as pd
 
 from torch.utils.data import DataLoader
+
+import SimpleITK as sitk
 
 # put GANDLF in as a submodule staat pip install
 from GANDLF.data.ImagesFromDataFrame import ImagesFromDataFrame
@@ -94,7 +96,8 @@ def fpaths_to_uid(fpaths):
 class GANDLFData(object):
 
     def __init__(self, 
-                 data_path,
+                 data_path, 
+                 training_batch_size=1,
                  class_list=[0, 1, 2, 4], 
                  patch_sampler='uniform',       
                  psize=[128, 128, 128],
@@ -118,9 +121,9 @@ class GANDLFData(object):
                  force_rerun_with_recent_data_loss = True,
                  **kwargs):
 
-        # some hard-coded atributes
+        # some hard-coded attributes
         # feature stack order (determines order of feature stack modes)
-        # depenency here with mode naming convention used in get_appropriate_file_paths_from_subject_dir
+        # dependency here with mode naming convention used in get_appropriate_file_paths_from_subject_dir
         self.feature_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
         self.label_tag = 'Label'
 
@@ -169,7 +172,7 @@ class GANDLFData(object):
         self.class_list = class_list
         self.n_classes = len(self.class_list)
         # There is an assumption of batch size of 1
-        self.batch_size = 1
+        self.batch_size = training_batch_size
         
         # augmentations apply only for the trianing loader
         self.train_augmentations = data_augmentation
@@ -538,8 +541,7 @@ class GANDLFData(object):
         self.lost_train_info_path = os.path.join(self.split_instance_dirpath, lost_train_info_fname)
         self.lost_val_info_path = os.path.join(self.split_instance_dirpath, lost_val_info_fname)
 
-        if not os.path.exists(split_info_dirpath):
-            os.mkdir(split_info_dirpath)
+        pathlib.Path(split_info_dirpath).mkdir(parents=True, exist_ok=True)
 
 
     def create_dataframe(self, uids, include_labels):
@@ -600,7 +602,10 @@ class GANDLFData(object):
                                    augmentations=augmentations, 
                                    preprocessing=self.preprocessing, 
                                    in_memory=self.in_memory)
-        loader = DataLoader(data, batch_size=self.batch_size)
+        if train:
+            loader = DataLoader(data, shuffle=True, batch_size=self.batch_size)
+        else:
+            loader = DataLoader(data, shuffle=False, batch_size=1)
         
         companion_loader = None
         if train:
@@ -617,7 +622,7 @@ class GANDLFData(object):
                                                  train=False, 
                                                  augmentations=None, 
                                                  preprocessing=self.preprocessing)
-            companion_loader = DataLoader(companion_data, batch_size=self.batch_size)
+            companion_loader = DataLoader(companion_data, batch_size=1)
 
         return loader, companion_loader
 
@@ -717,14 +722,75 @@ class GANDLFData(object):
         if self.class_list == [0, 1, 2 , 4]:
             # in this case, background is encoded in the first output channel
             output[:,0,:,:,:] = 1
-        elif not (set(self.class_list) == set(['4', '1||2||4', '1||4'])):
-            raise ValueError('Supporting class list of {} is not present.'.format(self.class_list))
+        elif self.class_list != ['4', '1||4', '1||2||4']:
+           # for fused or trimmed_fused the background is 0 so already set, but otherwise we raise an exception
+           raise ValueError('Supporting class list of {} is not present.'.format(self.class_list))
   
         # write in non-background output using the output of cropped features
         output[:, :, small_idx_corner[0]:large_idx_corner[0],small_idx_corner[1]:large_idx_corner[1], small_idx_corner[2]:large_idx_corner[2]] = \
             output_of_cropped[:,:,:large_idx_corner[0]-small_idx_corner[0],:large_idx_corner[1]-small_idx_corner[1],:large_idx_corner[2]-small_idx_corner[2]]
         
         return output
+
+    def write_outputs(self, outputs, dirpath, class_list,  class_axis=1):
+        for idx, output in enumerate(outputs):
+            fpath = os.path.join(dirpath, "output_" + str(idx) + ".nii.gz")
+
+            # sanity check
+            if output.shape[class_axis] != len(class_list):
+                    raise ValueError('The provided output does not have the softmax applied along {} as assumed.'.format(class_axis))
+            
+            # process float outputs into 0, 1, 2, 4 original labels
+            if self.class_list == [0, 1, 2, 4]:
+                # here the output should have a multi dim channel enumerating class softmax along class_axis axis
+                # check that softmax was used
+                if np.all(np.sum(output, axis=class_axis)==1):
+                    raise ValueError('The provided output does not appear to have softmax along {} axis as assumed.'.format(class_axis)) 
+                # infer label from argmax
+                idx_array = np.argmax(output, axis=class_axis)
+                new_output = idx_array.apply_(lambda idx : class_list[idx])
+            elif self.class_list == ['4', '1||4', '1||2||4']:
+                # FIXME: This is one way to infer the original labels (is this the best way?)
+
+                new_shape = [length for idx, length in enumerate(output.shape) if idx != class_axis]
+                
+                # initializations
+                new_output = np.zeros(new_shape)
+                slices = [slice(None) for _ in output.shape]
+
+                # write in 4's indicated by ET channel of class_axis
+                slices[class_axis] = 0  # 0 is ET channel
+                locations_of_4s = output[tuple(slices)]==1  # 1 indicating YES for ET
+                new_output[locations_of_4s] = 4
+
+                # write in 1's indicated by TC but not already labeled 4
+                slices[class_axis] = 1  # 1 is the TC channel
+                locations_of_TC = output[tuple(slices)]==1  # 1 indicating YES for TC
+                locations_of_1s = np.logical_and(locations_of_TC, ~locations_of_4s)
+                new_output[locations_of_1s] = 1
+
+                # write in 2's indicated by WT but not already labeled 1's or 4's
+                slices[class_axis] = 2  # 2 is WT channel
+                locations_of_WT = output[tuple(slices)]==1  # 1 indicating YES for WT
+                locations_of_1or4 = np.logical_or(locations_of_1s, locations_of_4s)
+                locations_of_2s = np.logical_and(locations_of_WT, ~locations_of_1or4)
+                new_output[locations_of_2s] = 2
+
+                # sanity check
+                np.sum(new_output != 0) == np.sum(np.amax(output, axis=class_axis))
+            else:
+                raise ValueError('Class list {} not currently supported.'.format(self.class_list))
+            
+            # shape is currently [1, 240, 240, 155]. for sitk saving we will squeeze and transpose
+            new_output = new_output[0].transpose([2, 0, 1])
+            if list(new_output.shape) != [155, 240, 240]:
+                raise ValueError('Unexpected shape during processing of output image for sitk savings.')
+
+            # convert array to SimpleITK image 
+            image = sitk.GetImageFromArray(new_output)
+
+            print("Writing inference NIfTI image of shape {} to {}".format(new_output.shape, fpath))
+            sitk.WriteImage(image, fpath)
 
     def get_train_loader(self):
         return self.train_loader
