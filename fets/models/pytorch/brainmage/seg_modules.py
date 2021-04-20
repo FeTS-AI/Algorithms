@@ -414,6 +414,8 @@ class out_conv(nn.Module):
         """
         nn.Module.__init__(self)
         self.lrelu_inplace = lrelu_inplace
+        
+        print("\nout_conv will be using final activation: ", activation)
         self.activation = activation
 
         print("\nout_conv will be using sigmoid_input_multiplier: ", sigmoid_input_multiplier)
