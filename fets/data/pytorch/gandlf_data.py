@@ -738,13 +738,13 @@ class GANDLFData(object):
 
             # sanity check
             if output.shape[class_axis] != len(class_list):
-                    raise ValueError('The provided output does not have the softmax applied along {} as assumed.'.format(class_axis))
+                    raise ValueError('The provided output does not enumerate classes along axis {} as assumed.'.format(class_axis))
             
             # process float outputs into 0, 1, 2, 4 original labels
             if self.class_list == [0, 1, 2, 4]:
                 # here the output should have a multi dim channel enumerating class softmax along class_axis axis
                 # check that softmax was used
-                if np.all(np.sum(output, axis=class_axis)==1):
+                if not np.all(np.sum(output, axis=class_axis) - 1 < 1e-6):
                     raise ValueError('The provided output does not appear to have softmax along {} axis as assumed.'.format(class_axis)) 
                 # infer label from argmax
                 idx_array = np.argmax(output, axis=class_axis)
