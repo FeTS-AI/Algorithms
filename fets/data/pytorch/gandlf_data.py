@@ -782,7 +782,7 @@ class GANDLFData(object):
                 raise ValueError('Class list {} not currently supported.'.format(self.class_list))
             
             # shape is currently [1, 155, 240, 240]. for sitk saving we will squeeze
-            new_output = new_output[0].transpose()
+            new_output = new_output[0].transpose([2, 0, 1])
             if list(new_output.shape) != [155, 240, 240]:
                 raise ValueError('Unexpected shape {} during processing of output image for sitk savings (was expecting [155, 240, 240]).'.format(new_output.shape))
 
