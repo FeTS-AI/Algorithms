@@ -128,6 +128,8 @@ class GANDLFData(object):
         self.label_tag = 'Label'
 
         self.data_path = data_path
+        if not os.path.exists(self.data_path):
+            raise ValueError('The provided data path: {} does not exits'.format(self.data_path))
 
         # using numerical header names
         self.numeric_header_names = {mode: idx+1 for idx, mode in enumerate(self.feature_modes)}
