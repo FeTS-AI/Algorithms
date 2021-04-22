@@ -286,14 +286,12 @@ class BrainMaGeModel(PyTorchFLModel):
 
     def sanity_check_val_input_shape(self, features):
         features_shape = list(features.shape)
-        print("Sanity checking validation input shape is ", self.val_input_shape)
         if (self.val_input_shape is not None) and (self.val_input_shape != features_shape):
             # FIXME: (replace with raised exception?)
             print('\nFeatures going into model during validation has shape {} when {} was expected.\n'.format(features_shape, self.val_input_shape))
 
     def sanity_check_val_output_shape(self, output):
         output_shape = list(output.shape)
-        print("Sanity checking validation output shape is ", self.val_output_shape)
         if (self.val_output_shape is not None) and (self.val_output_shape != output_shape):
             # FIXME: (replace with raised exception?)
             print('\nOutput from the model during validation has shape {} when {} was expected.\n'.format(output_shape, self.val_output_shape))
