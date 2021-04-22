@@ -31,8 +31,20 @@ and some other hyperparameters, which remain constant all the modules. For more 
 """
 
 class PyTorch3DResUNet(BrainMaGeModel):
-    def __init__(self, final_layer_activation=None, sigmoid_input_multiplier=1.0, **kwargs):
-        super(PyTorch3DResUNet, self).__init__(**kwargs)
+    def __init__(self,
+                 data,  
+                 final_layer_activation=None, 
+                 sigmoid_input_multiplier=1.0,
+                 model_input_shape=None,
+                 model_output_shape=None,
+                 **kwargs):
+
+        if val_input_shape is None:
+            val_input_shape = [data.batch_size, len(data.class_list)] + data.psize
+        if val_output_shape is None:
+            val_output_shape = [data.batch_size, len(data.class_list)] + data.psize
+        
+        super(PyTorch3DResUNet, self).__init__(data=data, **kwargs)
 
         if final_layer_activation is None:
             # inferring from data object class_list attribute

@@ -103,6 +103,8 @@ class BrainMaGeModel(PyTorchFLModel):
                  loss_function_kwargs={}, 
                  validation_function_kwargs={},
                  output_per_example_valscores=True,
+                 val_input_shape = None,
+                 val_output_shape = None,
                  **kwargs):
         super().__init__(data=data, device=device, **kwargs)
 
@@ -159,6 +161,10 @@ class BrainMaGeModel(PyTorchFLModel):
         # Do we produce a list of validation scores (over samples of the val loader), or
         # do we output a single score resulting from the average of these?
         self.output_per_example_valscores = output_per_example_valscores
+
+        # if not None, used to sanity check what input and output shapes are for validation pipeline 
+        self.val_input_shape = val_input_shape
+        self.val_output_shape = val_output_shape
         
         ############### CHOOSING THE LOSS AND VALIDATION FUNCTIONS ###################
 
@@ -277,6 +283,20 @@ class BrainMaGeModel(PyTorchFLModel):
 
             return channel_keys
         return channel_keys
+
+    def sanity_check_val_input_shape(self, features):
+        features_shape = list(features.shape)
+        print("Sanity checking validation input shape is ", self.val_input_shape)
+        if (self.val_input_shape is not None) and (self.val_input_shape != features_shape):
+            # FIXME: (replace with raised exception?)
+            print('\nFeatures going into model during validation has shape {} when {} was expected.\n'.format(features_shape, self.val_input_shape))
+
+    def sanity_check_val_output_shape(self, output):
+        output_shape = list(output.shape)
+        print("Sanity checking validation output shape is ", self.val_output_shape)
+        if (self.val_output_shape is not None) and (self.val_output_shape != output_shape):
+            # FIXME: (replace with raised exception?)
+            print('\nOutput from the model during validation has shape {} when {} was expected.\n'.format(output_shape, self.val_output_shape))
 
     def prep_penalties(self):
 
@@ -397,7 +417,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
                     # Forward Propagation to get the output from the models
                     output = self(features)
-
+                    
                     # Computing the loss
                     loss = self.loss_fn(output=output, 
                                         target=mask, 
@@ -452,7 +472,9 @@ class BrainMaGeModel(PyTorchFLModel):
                 features = subject['features']
                 mask = subject['gt']
         
+                self.sanity_check_input_shape(features)
                 output = self.infer_batch_with_no_numpy_conversion(features=features)
+                self.sanity_check_output_shape(output)
                     
             # using the gandlf loader   
             else:
@@ -460,11 +482,16 @@ class BrainMaGeModel(PyTorchFLModel):
                 mask = subject['label'][torchio.DATA]
 
                 if self.validate_without_patches:
+                    self.sanity_check_val_input_shape(features)
                     output = self.data.infer_with_crop(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                        features=features)
+                    self.sanity_check_val_output_shape(output)
                 else:
+                    self.sanity_check_val_input_shape(features)
                     output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                                    features=features)
+                    self.sanity_check_val_output_shape
+                    
             if save_outputs:
                 outputs.append(output.numpy())   
                 
