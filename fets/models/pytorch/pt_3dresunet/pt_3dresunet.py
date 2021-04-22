@@ -44,7 +44,7 @@ class PyTorch3DResUNet(BrainMaGeModel):
         if val_output_shape is None:
             val_output_shape = [data.batch_size, len(data.class_list)] + data.psize
         
-        super(PyTorch3DResUNet, self).__init__(data=data, **kwargs)
+        super(PyTorch3DResUNet, self).__init__(val_input_shape=val_input_shape, val_output_shape=val_output_shape, data=data, **kwargs)
 
         if final_layer_activation is None:
             # inferring from data object class_list attribute
