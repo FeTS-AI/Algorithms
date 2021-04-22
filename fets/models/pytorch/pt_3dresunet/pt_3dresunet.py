@@ -40,9 +40,9 @@ class PyTorch3DResUNet(BrainMaGeModel):
                  **kwargs):
 
         if val_input_shape is None:
-            val_input_shape = [data.batch_size, len(data.class_list)] + data.psize
+            val_input_shape = [data.batch_size, 4, 240, 240, 155]
         if val_output_shape is None:
-            val_output_shape = [data.batch_size, len(data.class_list)] + data.psize
+            val_output_shape = [data.batch_size, 4, 240, 240, 155]
         
         super(PyTorch3DResUNet, self).__init__(val_input_shape=val_input_shape, val_output_shape=val_output_shape, data=data, **kwargs)
 
