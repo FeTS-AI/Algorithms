@@ -472,9 +472,9 @@ class BrainMaGeModel(PyTorchFLModel):
                 features = subject['features']
                 mask = subject['gt']
         
-                self.sanity_check_input_shape(features)
+                self.sanity_check_val_input_shape(features)
                 output = self.infer_batch_with_no_numpy_conversion(features=features)
-                self.sanity_check_output_shape(output)
+                self.sanity_check_val_output_shape(output)
                     
             # using the gandlf loader   
             else:
