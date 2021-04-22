@@ -490,7 +490,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     self.sanity_check_val_input_shape(features)
                     output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                                    features=features)
-                    self.sanity_check_val_output_shape
+                    self.sanity_check_val_output_shape(output)
                     
             if save_outputs:
                 outputs.append(output.numpy())   
