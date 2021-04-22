@@ -35,8 +35,8 @@ class PyTorch3DResUNet(BrainMaGeModel):
                  data,  
                  final_layer_activation=None, 
                  sigmoid_input_multiplier=1.0,
-                 model_input_shape=None,
-                 model_output_shape=None,
+                 val_input_shape=None,
+                 val_output_shape=None,
                  **kwargs):
 
         if val_input_shape is None:
