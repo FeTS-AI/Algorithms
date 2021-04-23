@@ -79,6 +79,7 @@ def cyclical_lr(cycle_length, min_lr_multiplier, max_lr_multiplier):
 
 
 def nan_check(tensor, tensor_description):
+    tensor = tensor.cpu()
     if torch.any(torch.isnan(tensor)):
         raise ValueError("A " + tensor_description + " was found to have nan values.")
 
@@ -247,7 +248,7 @@ class BrainMaGeModel(PyTorchFLModel):
         # a set fraction of an epoch (rather than a set number of batches) otherwise use batch_num based cycle length
         cycle_length =  int((float(self.data.get_training_data_size())/float(self.data.batch_size)) / float(self.learning_rate_cycles_per_epoch))
         if cycle_length == 0:
-            if self.data.get_training_data_size == 0:
+            if self.data.get_training_data_size() == 0:
                 cycle_length = 1
                 print("\nNo training data is present, so setting silly cyclic length for scheduler.\n")
             else:
@@ -357,7 +358,6 @@ class BrainMaGeModel(PyTorchFLModel):
         return output
 
     def train_batches(self, num_batches, use_tqdm=False):
-        num_subjects = num_batches
         
         device = torch.device(self.device)
 
@@ -365,7 +365,7 @@ class BrainMaGeModel(PyTorchFLModel):
         print("\nHostname   :" + str(os.getenv("HOSTNAME")))
         sys.stdout.flush()
 
-        print("Training Data Samples: ", len(self.data.train_loader.dataset))
+        print("Training batches: ", len(self.data.train_loader.dataset))
         sys.stdout.flush()
 
         print('Using device:', device)
@@ -386,31 +386,30 @@ class BrainMaGeModel(PyTorchFLModel):
             train_loader = tqdm.tqdm(train_loader, desc="training for this round")
 
         total_loss = 0
-        subject_num = 0
-        num_nan_losses = 0
-
+        batch_num = 0
+        
         # set to "training" mode
         self.train()
-        while subject_num < num_subjects:
+        while batch_num < num_batches:
                        
-            for subject in train_loader:
-                if subject_num >= num_subjects:
+            for batch in train_loader:
+                if batch_num >= num_batches:
                     break
                 else:
                     # if device.type == 'cuda':
                         # print('=== Memory (allocated; cached) : ', round(torch.cuda.memory_allocated(0)/1024**3, 1), '; ', round(torch.cuda.memory_reserved(0)/1024**3, 1))
-                    # Load the subject and its ground truth
+                    # Load the batch and its ground truth
                     # this is when we are using pt_brainmagedata
-                    if ('features' in subject.keys()) and ('gt' in subject.keys()):
-                        features = subject['features']
+                    if ('features' in batch.keys()) and ('gt' in batch.keys()):
+                        features = batch['features']
                         nan_check(tensor=features, tensor_description='features tensor')
-                        mask = subject['gt']
+                        mask = batch['gt']
                         nan_check(tensor=mask, tensor_description='ground truth mask tensor')
                     # this is when we are using gandlf loader   
                     else:
-                        features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
+                        features = torch.cat([batch[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                         nan_check(tensor=features, tensor_description='features tensor')
-                        mask = subject['label'][torchio.DATA]
+                        mask = batch['label'][torchio.DATA]
                         nan_check(tensor=mask, tensor_description='ground truth mask tensor')
 
                     mask = one_hot(mask, self.data.class_list).float()
@@ -436,26 +435,20 @@ class BrainMaGeModel(PyTorchFLModel):
                                         **self.loss_function_kwargs)
                     nan_check(tensor=loss, tensor_description='model loss tensor')
 
-                    # Back Propagation for model to learn (unless loss is nan)
-                    if torch.isnan(loss):
-                        num_nan_losses += 1
-                    else:
-                        loss.backward()
-                        #Updating the weight values
-                        self.optimizer.step()
-                        #Pushing the dice to the cpu and only taking its value
-                        loss = loss.cpu().data.item()
-                        total_loss += loss
+                    # Back Propagation for model to learn    
+                    loss.backward()
+                    #Updating the weight values
+                    self.optimizer.step()
+                    #Pushing the dice to the cpu and only taking its value
+                    loss = loss.cpu().data.item()
+                    total_loss += loss
                     self.lr_scheduler.step()
 
-                    subject_num += 1
+                    batch_num += 1
 
-        num_subject_grads = num_subjects - num_nan_losses
-
-        # we return the average batch loss over all epochs trained this round (excluding the nan results)
-        # we also return the number of samples that produced nan losses, as well as total samples used
-        # FIXME: In a federation we may want the collaborators data size to be modified when backprop is skipped.
-        return {"loss": total_loss / num_subject_grads, "num_nan_losses": num_nan_losses, "num_samples_used": num_subjects }
+        # we return the average batch loss over all samples trained with this round
+        # we also return the total batches used
+        return {"loss": total_loss / num_batches, "num_batches_used": num_batches }
 
     def validate(self, use_tqdm=False, save_outputs=False, model_id=None, model_version=None, local_outputs_directory=None):
         
