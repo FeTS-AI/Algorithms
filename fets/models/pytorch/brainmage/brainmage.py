@@ -43,7 +43,6 @@ from .losses import fets_phase2_validation
 
 # TODO: Run in CONTINUE_LOCAL or RESET optimizer modes for now, later ensure that the cyclic learning rate is properly handled for CONTINUE_GLOBAL.
 # FIXME: do we really want to keep loss at 1-dice rather than -ln(dice)
-# FIXME: Turn on data augmentation for training (double check all)
 
 
  # TODO: Temporarily using patching in the model code (until GANDLF patching is plugged in) 
@@ -77,6 +76,11 @@ def cyclical_lr(cycle_length, min_lr_multiplier, max_lr_multiplier):
         return 2 * abs(iteration - cycle_length/2.0) / cycle_length
 
     return mult
+
+
+def nan_check(tensor, tensor_description):
+    if torch.any(torch.isnan(tensor)):
+        raise ValueError("A " + tensor_description + " was found to have nan values.")
 
 
 class BrainMaGeModel(PyTorchFLModel):
@@ -399,13 +403,18 @@ class BrainMaGeModel(PyTorchFLModel):
                     # this is when we are using pt_brainmagedata
                     if ('features' in subject.keys()) and ('gt' in subject.keys()):
                         features = subject['features']
+                        nan_check(tensor=features, tensor_description='features tensor')
                         mask = subject['gt']
+                        nan_check(tensor=mask, tensor_description='ground truth mask tensor')
                     # this is when we are using gandlf loader   
                     else:
                         features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
+                        nan_check(tensor=features, tensor_description='features tensor')
                         mask = subject['label'][torchio.DATA]
+                        nan_check(tensor=mask, tensor_description='ground truth mask tensor')
 
                     mask = one_hot(mask, self.data.class_list).float()
+                    nan_check(tensor=mask, tensor_description='one_hot ground truth mask tensor')
                         
                     # Loading features into device
                     features, mask = features.to(device), mask.to(device)
@@ -415,6 +424,7 @@ class BrainMaGeModel(PyTorchFLModel):
 
                     # Forward Propagation to get the output from the models
                     output = self(features)
+                    nan_check(tensor=output, tensor_description='model output tensor')
                     
                     # Computing the loss
                     loss = self.loss_fn(output=output, 
@@ -424,6 +434,7 @@ class BrainMaGeModel(PyTorchFLModel):
                                         class_list=self.data.class_list, 
                                         to_scalar=False, 
                                         **self.loss_function_kwargs)
+                    nan_check(tensor=loss, tensor_description='model loss tensor')
 
                     # Back Propagation for model to learn (unless loss is nan)
                     if torch.isnan(loss):
@@ -468,26 +479,33 @@ class BrainMaGeModel(PyTorchFLModel):
             # this is when we are using pt_brainmagedata
             if ('features' in subject.keys()) and ('gt' in subject.keys()):
                 features = subject['features']
+                nan_check(tensor=features, tensor_description='features tensor')
                 mask = subject['gt']
+                nan_check(tensor=mask, tensor_description='ground truth mask tensor')
         
                 self.sanity_check_val_input_shape(features)
                 output = self.infer_batch_with_no_numpy_conversion(features=features)
+                nan_check(tensor=output, tensor_description='model output tensor')
                 self.sanity_check_val_output_shape(output)
                     
             # using the gandlf loader   
             else:
                 features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
+                nan_check(tensor=features, tensor_description='features tensor')
                 mask = subject['label'][torchio.DATA]
+                nan_check(tensor=mask, tensor_description='ground truth mask tensor')
 
                 if self.validate_without_patches:
                     self.sanity_check_val_input_shape(features)
                     output = self.data.infer_with_crop(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                        features=features)
+                    nan_check(tensor=output, tensor_description='model output tensor')
                     self.sanity_check_val_output_shape(output)
                 else:
                     self.sanity_check_val_input_shape(features)
                     output = self.data.infer_with_crop_and_patches(model_inference_function=[self.infer_batch_with_no_numpy_conversion], 
                                                                    features=features)
+                    nan_check(tensor=output, tensor_description='model output tensor')
                     self.sanity_check_val_output_shape(output)
                     
             if save_outputs:
@@ -495,6 +513,7 @@ class BrainMaGeModel(PyTorchFLModel):
                 
             # one-hot encoding of ground truth
             mask = one_hot(mask, self.data.class_list).float()
+            nan_check(tensor=mask, tensor_description='one_hot ground truth mask tensor')
             
             # sanity check that the output and mask have the same shape
             if output.shape != mask.shape:
@@ -506,6 +525,8 @@ class BrainMaGeModel(PyTorchFLModel):
                                                         class_list=self.data.class_list, 
                                                         fine_grained=self.validate_with_fine_grained_dice, 
                                                         **self.validation_function_kwargs)
+            for key, value in current_valscore.items():
+                nan_check(tensor=torch.Tensor([value]), tensor_description='validation result with key {}'.format(key))
 
             # the dice results here are dictionaries (sum up the totals)
             for key in self.validation_output_keys:
