@@ -93,8 +93,12 @@ class PyTorch3DResUNet(BrainMaGeModel):
         self.to(device)
 
     def forward(self, x):
-        # normalize input
-        x = (x - torch.mean(x)) / torch.std(x)
+        # normalize input if can do so without producing nan values
+
+        if (torch.isnan(torch.std(x)).cpu().item() != True) and (torch.std(x).cpu().item() != 0.0):
+            x = (x - torch.mean(x)) / torch.std(x)
+        else:
+            print("Skipping input normalization due to std val of : {}.".format(torch.std(x).cpu().item()))
         x1 = self.ins(x)
         x2 = self.ds_0(x1)
         x2 = self.en_1(x2)

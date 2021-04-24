@@ -407,6 +407,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         nan_check(tensor=mask, tensor_description='ground truth mask tensor')
                     # this is when we are using gandlf loader   
                     else:
+                        print("Training on batch with subjects: ", batch['subject_id'])
                         features = torch.cat([batch[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                         nan_check(tensor=features, tensor_description='features tensor')
                         mask = batch['label'][torchio.DATA]
@@ -483,6 +484,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
             # using the gandlf loader   
             else:
+                print("Validating with subject: ", subject['subject_id'])
                 features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                 nan_check(tensor=features, tensor_description='features tensor')
                 mask = subject['label'][torchio.DATA]
