@@ -889,7 +889,7 @@ def crossentropy(output, target, class_list, **kwargs):
                                                                 **kwargs)
         return xent_sum_across_tasks / len(class_list)
     else:
-        raise ValueError('No impelementation for this model class_list: ', class_list) 
+        raise ValueError('No implementation for this model class_list: ', class_list) 
 
 
 def MCD_loss(pm, gt, num_classes, weights = None, **kwargs):
