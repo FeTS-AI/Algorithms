@@ -1,10 +1,10 @@
 
 # TODO:insert header pointing to GANDLF repo inclusion
 # TODO: Should the validation patch sampler be different from the training one?
-# FIXME: replace prints to stdout with logging.
 
 import os, pathlib
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
+import logging
 import numpy as np
 import torch
 import torchio
@@ -120,6 +120,8 @@ class GANDLFData(object):
                  handle_data_loss_from_previous_split= True,
                  force_rerun_with_recent_data_loss = True,
                  **kwargs):
+
+        self.logger = logging.getLogger('openfl.model_and_data')
 
         # some hard-coded attributes
         # feature stack order (determines order of feature stack modes)
@@ -318,7 +320,7 @@ class GANDLFData(object):
                 uids_to_subdirs[uid] = subdir
    
         if len(incomplete_data_subdirs) != 0:
-            print('\nIgnoring subdirectories: {} as they are missing needed data files.\n'.format(incomplete_data_subdirs))
+            self.logger.debug('\nIgnoring subdirectories: {} as they are missing needed data files.\n'.format(incomplete_data_subdirs))
         
         if hasattr(self, 'uids_to_fpaths'):
             raise RuntimeError('Use-cases comprehended for attribute uids_to_fpaths is currently only write-once.')
@@ -371,9 +373,9 @@ class GANDLFData(object):
             exists_in_all = [os.path.exists(_path) for _path in need_all]
             exists_in_all_or_none = [os.path.exists(_path) for _path in need_all_or_none]
             if not np.all(exists_in_all):
-                raise ValueError('At least one of {} is missing!! Carefully recover, using information printed to stdout during last run.'.format(need_all))
+                raise ValueError('At least one of {} is missing!! Carefully recover, using information produced in model_and_data.log during last run.'.format(need_all))
             if np.any(exists_in_all_or_none) and not np.all(exists_in_all_or_none):
-                raise ValueError('All or none of: {} should exists, but exactly one was found!! Carefully recover, using information printed to stdout during last run.'.format(need_all_or_none))
+                raise ValueError('All or none of: {} should exists, but exactly one was found!! Carefully recover, using information produced in model_and_data.log during last run.'.format(need_all_or_none))
             past_split_exists = True
         return past_split_exists
 
@@ -418,11 +420,11 @@ class GANDLFData(object):
                 raise RuntimeError('Claiming lost data when no historical data info exists.')
             
             if lost_train != []:
-                print('\nWARNING: Training data with UIDs: {} from split: {} now missing on disk.\n'.format(lost_train, self.split_instance_dirname))
+                self.logger.debug('\nWARNING: Training data with UIDs: {} from split: {} now missing on disk.\n'.format(lost_train, self.split_instance_dirname))
                 if not self.handle_data_loss_from_previous_split:
                     raise ValueError('Training data with UIDs: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(lost_train, self.split_instance_dirname))
             if lost_val != []:
-                print('\nWARNING: Validation data with UIDs: {} from split: {} now missing on disk.\n'.format(lost_val, self.split_instance_dirname))
+                self.logger.debug('\nWARNING: Validation data with UIDs: {} from split: {} now missing on disk.\n'.format(lost_val, self.split_instance_dirname))
                 if not self.handle_data_loss_from_previous_split:
                     raise ValueError('Validation data with UIDs: {} from split: {} now missing on disk and handle_data_loss_from_previous_split is False.'.format(lost_val, self.split_instance_dirname))
 
@@ -430,29 +432,27 @@ class GANDLFData(object):
 
     def record_split_info(self, train, val):
 
-        # TODO: Replace print to stdout with logging
-
-        print('\n Data split information:')
-        print('\n{} good data subdirectories were found in {}'.format(self.num_on_disk, self.data_path))
+        self.logger.debug('\n Data split information:')
+        self.logger.debug('\n{} good data subdirectories were found in {}'.format(self.num_on_disk, self.data_path))
         if self.num_train_historical_assignments + self.num_val_historical_assignments != 0:
-            print('{} of these were known to be used previously, so were assigned to train/val using historical split info.'.format(self.num_train_historical_assignments + self.num_val_historical_assignments))
+            self.logger.debug('{} of these were known to be used previously, so were assigned to train/val using historical split info.'.format(self.num_train_historical_assignments + self.num_val_historical_assignments))
         if self.allow_previously_unseen_data and self.num_fresh_to_split != 0:
-            print('{} of these were previosly unknown, so assigned randomly (with best effort to maintain percent train:{}.'.format(self.num_fresh_to_split, self.percent_train))
+            self.logger.debug('{} of these were previosly unknown, so assigned randomly (with best effort to maintain percent train:{}.'.format(self.num_fresh_to_split, self.percent_train))
         elif not self.allow_previously_unseen_data and (self.num_on_disk > self.num_train_historical_assignments + self.num_val_historical_assignments):
-            print('Not allowing previously unseen data samples into split, since old split info exists and allow_new_data_into_previous_split is False.')
+            self.logger.debug('Not allowing previously unseen data samples into split, since old split info exists and allow_new_data_into_previous_split is False.')
         
-        print('\nSubdirectories (uids) to be used for training: {}({})'.format(self.get_subdirs_from_uids(train), train))
+        self.logger.debug('\nSubdirectories (uids) to be used for training: {}({})'.format(self.get_subdirs_from_uids(train), train))
         if self.num_train_historical_assignments != 0:
-            print('{} assigned using previous split info.'.format(self.num_train_historical_assignments))
+            self.logger.debug('{} assigned using previous split info.'.format(self.num_train_historical_assignments))
         if self.allow_previously_unseen_data and (self.num_train_fresh_assignments != 0):
-            print('{} newly assigned.'.format(self.num_train_fresh_assignments))
+            self.logger.debug('{} newly assigned.'.format(self.num_train_fresh_assignments))
 
 
-        print('\nSubdirectories (uids) to be used for validation: {}({})'.format(self.get_subdirs_from_uids(val), val))
+        self.logger.debug('\nSubdirectories (uids) to be used for validation: {}({})'.format(self.get_subdirs_from_uids(val), val))
         if self.num_val_historical_assignments != 0:
-            print('{} assigned using previous split info.'.format(self.num_val_historical_assignments))
+            self.logger.debug('{} assigned using previous split info.'.format(self.num_val_historical_assignments))
         if self.allow_previously_unseen_data and (self.num_val_fresh_assignments != 0):
-            print('{} newly assigned.\n'.format(self.num_val_fresh_assignments))
+            self.logger.debug('{} newly assigned.\n'.format(self.num_val_fresh_assignments))
 
         if not os.path.exists(self.split_instance_dirpath):
             previous_split = False
@@ -486,9 +486,9 @@ class GANDLFData(object):
         newly_lost_val = []
         
         if (not lists_empty) or old_lost_info_present:
-            print('\nLost data info:\n')
-            print('Data with UIDs: {} were previously used for training but now missing from {}'.format(lost_train, self.data_path))
-            print('Data with UIDs: {} were previously used for validation but now missing from {}\n'.format(lost_val, self.data_path)) 
+            self.logger.debug('\nLost data info:\n')
+            self.logger.debug('Data with UIDs: {} were previously used for training but now missing from {}'.format(lost_train, self.data_path))
+            self.logger.debug('Data with UIDs: {} were previously used for validation but now missing from {}\n'.format(lost_val, self.data_path)) 
 
             write_out = False
             
@@ -565,7 +565,7 @@ class GANDLFData(object):
         # filter entries not meant for grabbing subject data
         subdirs_list = np.sort([item for item in list_dir if item not in self.excluded_subdirs and os.path.isdir(os.path.join(self.data_path, item))])
 
-        print("\nFound {} subdirectories under {} excluding the subdirectories that were supposed to be ignored: {}\n".format(len(subdirs_list), self.data_path, self.excluded_subdirs))
+        self.logger.debug("\nFound {} subdirectories under {} excluding the subdirectories that were supposed to be ignored: {}\n".format(len(subdirs_list), self.data_path, self.excluded_subdirs))
         
         return subdirs_list
 
@@ -795,7 +795,7 @@ class GANDLFData(object):
             # convert array to SimpleITK image 
             image = sitk.GetImageFromArray(new_output)
 
-            print("Writing inference NIfTI image of shape {} to {}".format(new_output.shape, fpath))
+            self.logger.debug("Writing inference NIfTI image of shape {} to {}".format(new_output.shape, fpath))
             sitk.WriteImage(image, fpath)
 
     def get_train_loader(self):
