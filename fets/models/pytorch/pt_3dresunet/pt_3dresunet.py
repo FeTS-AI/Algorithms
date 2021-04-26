@@ -98,7 +98,8 @@ class PyTorch3DResUNet(BrainMaGeModel):
         if (torch.isnan(torch.std(x)).cpu().item() != True) and (torch.std(x).cpu().item() != 0.0):
             x = (x - torch.mean(x)) / torch.std(x)
         else:
-            self.logger.debug("Skipping input normalization due to std val of : {}.".format(torch.std(x).cpu().item()))
+            print("DEBUG: here is the logger and I am seeing no normalization case: ", self.logger)
+            self.logger.debug("Skipping input normalization due to std val of: {}.".format(torch.std(x).cpu().item()))
         x1 = self.ins(x)
         x2 = self.ds_0(x1)
         x2 = self.en_1(x2)
