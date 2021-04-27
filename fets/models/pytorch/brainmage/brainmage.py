@@ -15,6 +15,7 @@ import os
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
 import torchio
 
+import logging
 import numpy as np
 import time
 import sys, os
@@ -119,6 +120,7 @@ class BrainMaGeModel(PyTorchFLModel):
             os.environ["KMP_AFFINITY"] = "granularity=fine,verbose,compact,1,0"
                  
         self.device = device
+        self.set_logger('openfl.model_and_data')
 
         # FIXME: this puts priority for these values on data object over flplan. Is this correct?
         if hasattr(data, 'n_classes') and data.n_classes is not None:
@@ -250,7 +252,7 @@ class BrainMaGeModel(PyTorchFLModel):
         if cycle_length == 0:
             if self.data.get_training_data_size() == 0:
                 cycle_length = 1
-                print("\nNo training data is present, so setting silly cyclic length for scheduler.\n")
+                self.logger.debug("No training data is present, so setting silly cyclic length for scheduler.")
             else:
                 raise ValueError("learning_rate_cycles_per_epoch is set to {} which cannot be greater than the number of training samples (which is {}).".format(self.learning_rate_cycles_per_epoch, self.data.get_training_data_size()))
 
@@ -293,13 +295,13 @@ class BrainMaGeModel(PyTorchFLModel):
         features_shape = list(features.shape)
         if (self.val_input_shape is not None) and (self.val_input_shape != features_shape):
             # FIXME: (replace with raised exception?)
-            print('\nFeatures going into model during validation has shape {} when {} was expected.\n'.format(features_shape, self.val_input_shape))
+            self.logger.debug('Features going into model during validation has shape {} when {} was expected.'.format(features_shape, self.val_input_shape))
 
     def sanity_check_val_output_shape(self, output):
         output_shape = list(output.shape)
         if (self.val_output_shape is not None) and (self.val_output_shape != output_shape):
             # FIXME: (replace with raised exception?)
-            print('\nOutput from the model during validation has shape {} when {} was expected.\n'.format(output_shape, self.val_output_shape))
+            self.logger.debug('Output from the model during validation has shape {} when {} was expected.'.format(output_shape, self.val_output_shape))
 
     def prep_penalties(self):
 
@@ -361,19 +363,17 @@ class BrainMaGeModel(PyTorchFLModel):
         
         device = torch.device(self.device)
 
-        ################################ PRINTING SOME STUFF ######################
-        print("\nHostname   :" + str(os.getenv("HOSTNAME")))
+        ################################ LOGGING SOME STUFF ######################
+        self.logger.debug("Hostname   : {}".format(str(os.getenv("HOSTNAME"))))
         sys.stdout.flush()
 
-        print("Training batches: ", len(self.data.train_loader.dataset))
+        self.logger.debug("Training batches: {}".format(len(self.data.train_loader.dataset)))
         sys.stdout.flush()
 
-        print('Using device:', device)
+        self.logger.debug('Using device: {}'.format(device))
         if device.type == 'cuda':
-            print('Memory Usage:')
-            print('Allocated:', round(torch.cuda.memory_allocated(0)/1024**3, 1),
-                'GB')
-            print('Cached: ', round(torch.cuda.memory_cached(0)/1024**3, 1), 'GB')
+            self.logger.debug('Memory Allocated: {}GB'.format(round(torch.cuda.memory_allocated(0)/1024**3, 1)))
+            self.logger.debug('Memory Cached: {}GB'.format(round(torch.cuda.memory_cached(0)/1024**3, 1)))
 
         sys.stdout.flush()
 
@@ -396,9 +396,8 @@ class BrainMaGeModel(PyTorchFLModel):
                 if batch_num >= num_batches:
                     break
                 else:
-                    # if device.type == 'cuda':
-                        # print('=== Memory (allocated; cached) : ', round(torch.cuda.memory_allocated(0)/1024**3, 1), '; ', round(torch.cuda.memory_reserved(0)/1024**3, 1))
                     # Load the batch and its ground truth
+                    
                     # this is when we are using pt_brainmagedata
                     if ('features' in batch.keys()) and ('gt' in batch.keys()):
                         features = batch['features']
@@ -407,7 +406,7 @@ class BrainMaGeModel(PyTorchFLModel):
                         nan_check(tensor=mask, tensor_description='ground truth mask tensor')
                     # this is when we are using gandlf loader   
                     else:
-                        print("Training on batch with subjects: ", batch['subject_id'])
+                        self.logger.debug("Training on batch with subjects: {}".format(batch['subject_id']))
                         features = torch.cat([batch[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                         nan_check(tensor=features, tensor_description='features tensor')
                         mask = batch['label'][torchio.DATA]
@@ -484,7 +483,7 @@ class BrainMaGeModel(PyTorchFLModel):
                     
             # using the gandlf loader   
             else:
-                print("Validating with subject: ", subject['subject_id'])
+                self.logger.debug("Validating with subject: {}".format(subject['subject_id']))
                 features = torch.cat([subject[key][torchio.DATA] for key in self.channel_keys], dim=1).float()
                 nan_check(tensor=features, tensor_description='features tensor')
                 mask = subject['label'][torchio.DATA]
@@ -551,10 +550,10 @@ class BrainMaGeModel(PyTorchFLModel):
                 self.data.write_outputs(outputs=outputs, dirpath=subdirpath_to_use, class_list=self.data.class_list)
 
         if self.output_per_example_valscores:
-            print("Producing per-example validation scores per key.")        
+            self.logger.debug("Producing per-example validation scores per key.")        
             return valscores
         else:
-            print("Producing single float validation scores per key.")
+            self.logger.debug("Producing single float validation scores per key.")
             return {key: np.mean(scores_list) for key, scores_list in valscores.items()}
 
 
