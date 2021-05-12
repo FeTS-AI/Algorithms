@@ -119,6 +119,8 @@ class GANDLFData(object):
                  allow_new_data_into_previous_split = True,
                  handle_data_loss_from_previous_split= True,
                  force_rerun_with_recent_data_loss = True,
+                 federated_simulation_train_val_csv_path = None,
+                 federated_simulation_institution_name = None,
                  **kwargs):
 
         self.logger = logging.getLogger('openfl.model_and_data')
@@ -223,6 +225,17 @@ class GANDLFData(object):
         # hard-coded file name
         self.split_info_dirname = 'split_info'
 
+        # Provides a way to define the train and val data directly for all institutions
+        #  of a simulated federation from a single csv (no cross-run sanity checks here)
+        self.federated_simulation_train_val_csv_path = federated_simulation_train_val_csv_path
+        self.federated_simulation_institution_name = federated_simulation_institution_name
+        if self.federated_simulation_train_val_csv_path is None:
+            if self.federated_simulation_institution_name is not None:
+                raise ValueError('federated_simulation_train_val_csv_path needs to be provided when federated_simulation_institution_name is.')
+        else:
+            if self.federated_simulation_institution_name is None:
+                raise ValueError('federated_simulation_institution_name needs to be provided when federated_simulation_train_val_csv_path is.') 
+
         #############################################################
         # The above attributes apply only to data-usage='train-val' #
         #############################################################
@@ -241,10 +254,39 @@ class GANDLFData(object):
         self.validation_data_size = len(self.val_loader)
 
     def setup_for_train_val(self):
+        self.set_dataframe_headers(self.train_val_headers, list_needed=True)
+        if self.federated_simulation_train_val_csv_path is not None:
+            self.setup_for_train_val_no_cross_run_state()
+        else:
+            self.setup_for_train_val_w_cross_run_state()
+
+    def setup_for_train_val_no_cross_run_state(self):
+        # load the train val csv (should have info on sample paths for the train and val set of
+        # all insitutions of a federated learninng simulation
+        train_val_paths = pd.read_csv(self.federated_simulation_train_val_csv_path, dtype=str)
+        if 'Institution' not in train_val_paths.columns:
+                raise ValueError("The train val csv must contain an 'Institution' column, and it does not")
+        for header in self.headers_list:
+            if (header is not None) and (header not in train_val_paths.columns):
+                raise ValueError('The columns of the train val csv must contain all of {} and {} is not present.'.format(self.headers_list, header))
+
+        # restrict to the institution provided in the __init__ parameters
+        train_val_paths = train_val_paths[train_val_paths['Institution']==self.federated_simulation_institution_name]
+        
+        train_dataframe = train_val_paths[train_val_paths['train_or_val']=='train']
+        val_dataframe = train_val_paths[train_val_paths['train_or_val']=='val']
+        
+        # now let's drop all of the columns we do not plan to use
+        columns_to_drop = list(set(list(train_val_paths.columns)).difference(set(self.headers_list)))
+        train_dataframe.drop(columns_to_drop, axis=1, inplace=True)
+        val_dataframe.drop(columns_to_drop, axis=1, inplace=True)
+
+        self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
+        
+
+    def setup_for_train_val_w_cross_run_state(self):
         self.inference_loader = []
             
-        self.set_dataframe_headers(self.train_val_headers, list_needed=True)
-        
         # FIXME: below contains some hard coded file names
         self.set_split_info_paths()
         
