@@ -96,7 +96,7 @@ def fpaths_to_uid(fpaths):
 class GANDLFData(object):
 
     def __init__(self, 
-                 data_path, 
+                 data_path=None, 
                  training_batch_size=1,
                  class_list=[0, 1, 2, 4], 
                  patch_sampler='uniform',       
@@ -131,10 +131,6 @@ class GANDLFData(object):
         self.feature_modes = ['T1', 'T2', 'FLAIR', 'T1CE']
         self.label_tag = 'Label'
 
-        self.data_path = data_path
-        if not os.path.exists(self.data_path):
-            raise ValueError('The provided data path: {} does not exits'.format(self.data_path))
-
         # using numerical header names
         self.numeric_header_names = {mode: idx+1 for idx, mode in enumerate(self.feature_modes)}
         self.numeric_header_names[self.label_tag] = len(self.feature_modes) + 1
@@ -155,6 +151,10 @@ class GANDLFData(object):
         self.inference_headers['channelHeaders'] = [self.numeric_header_names[mode] for mode in self.feature_modes]
         self.inference_headers['labelHeader'] = None
         self.inference_headers['predictionHeaders'] = []
+
+        self.numstring_to_num_headers = {str(name): name for name in self.numeric_header_names.values()}
+        # get the header number associated to the subject id as well
+        self.numstring_to_num_headers['0'] = 0
         
 
         self.divisibility_factor = divisibility_factor
@@ -239,7 +239,15 @@ class GANDLFData(object):
         #############################################################
         # The above attributes apply only to data-usage='train-val' #
         #############################################################
-        
+ 
+        self.data_path = data_path
+        # if federated_simultation_train_val_csv_path is provided, we use it instead of data_path
+        if self.federated_simulation_train_val_csv_path is None:
+            if self.data_path is None:
+                raise ValueError('One of data_path or federated_simulation_train_val_csv_path must be provided.')
+            elif not os.path.exists(self.data_path):
+                raise ValueError('The provided data path: {} does not exits'.format(self.data_path))
+ 
         # append the split info directory
         self.excluded_subdirs.append(self.split_info_dirname)
         
@@ -256,6 +264,8 @@ class GANDLFData(object):
     def setup_for_train_val(self):
         self.set_dataframe_headers(self.train_val_headers, list_needed=True)
         if self.federated_simulation_train_val_csv_path is not None:
+            if self.data_path is not None:
+                self.logger.warning('\nfederated_simulation_train_val_csv_path has been provided, so data_path will be ignored.\n')
             self.setup_for_train_val_no_cross_run_state()
         else:
             self.setup_for_train_val_w_cross_run_state()
@@ -264,17 +274,22 @@ class GANDLFData(object):
         # load the train val csv (should have info on sample paths for the train and val set of
         # all insitutions of a federated learninng simulation
         train_val_paths = pd.read_csv(self.federated_simulation_train_val_csv_path, dtype=str)
-        if 'Institution' not in train_val_paths.columns:
-                raise ValueError("The train val csv must contain an 'Institution' column, and it does not")
+        if 'InstitutionName' not in train_val_paths.columns:
+                raise ValueError("The train val csv must contain an 'InstitutionName' column, and it does not.")
+        if 'TrainOrVal' not in train_val_paths.columns:
+                raise ValueError("The train val csv must contain a 'TrainOrVal' column, and it does not.")
         for header in self.headers_list:
-            if (header is not None) and (header not in train_val_paths.columns):
-                raise ValueError('The columns of the train val csv must contain all of {} and {} is not present.'.format(self.headers_list, header))
+            if (header is not None) and (str(header) not in train_val_paths.columns):
+                raise ValueError('The columns of the train val csv must contain all of {} and {} is not present in {}.'.format(self.headers_list, header, train_val_paths.columns))
+
+        # now convert the headers that are numstrings to numbers
+        train_val_paths.rename(self.numstring_to_num_headers, axis=1, inplace=True)
 
         # restrict to the institution provided in the __init__ parameters
-        train_val_paths = train_val_paths[train_val_paths['Institution']==self.federated_simulation_institution_name]
+        train_val_paths = train_val_paths[train_val_paths['InstitutionName']==self.federated_simulation_institution_name]
         
-        train_dataframe = train_val_paths[train_val_paths['train_or_val']=='train']
-        val_dataframe = train_val_paths[train_val_paths['train_or_val']=='val']
+        train_dataframe = train_val_paths[train_val_paths['TrainOrVal']=='train']
+        val_dataframe = train_val_paths[train_val_paths['TrainOrVal']=='val']
         
         # now let's drop all of the columns we do not plan to use
         columns_to_drop = list(set(list(train_val_paths.columns)).difference(set(self.headers_list)))
