@@ -222,8 +222,9 @@ class GANDLFData(object):
         # do we throw exceptions for data subdirectories with missing files, or just skip them
         self.handle_missing_datafiles = handle_missing_datafiles
 
-        # hard-coded file name
+        # hard-coded file names and strings
         self.split_info_dirname = 'split_info'
+        fets_chall_magic_string = '__USE_DATA_PATH_AS_INSTITUTION_NAME__'
 
         # Provides a way to define the train and val data directly for all institutions
         #  of a simulated federation from a single csv (no cross-run sanity checks here)
@@ -235,9 +236,9 @@ class GANDLFData(object):
         else:
             if self.federated_simulation_institution_name is None:
                 raise ValueError('federated_simulation_institution_name needs to be provided when federated_simulation_train_val_csv_path is.')
-            elif self.federated_simulation_institution_name == '__USE_DATA_PATH_AS_INSITUTION_NAME__':
+            elif self.federated_simulation_institution_name == fets_chall_magic_string:
                 if data_path is None:
-                    raise ValueError("When federated_simulation_institution_name is set to '__USE_DATA_PATH_AS_INSITUTION_NAME__', data_path must be provided.")
+                    raise ValueError("When federated_simulation_institution_name is set to str(fets_chall_magic_string), data_path must be provided.")
                 else:
                     self.federated_simulation_institution_name = data_path          
             elif data_path is not None:
