@@ -234,8 +234,15 @@ class GANDLFData(object):
                 raise ValueError('federated_simulation_train_val_csv_path needs to be provided when federated_simulation_institution_name is.')
         else:
             if self.federated_simulation_institution_name is None:
-                raise ValueError('federated_simulation_institution_name needs to be provided when federated_simulation_train_val_csv_path is.') 
-
+                    raise ValueError('federated_simulation_institution_name needs to be provided when federated_simulation_train_val_csv_path is.')
+            elif self.federated_simulation_institution_name == '__USE_DATA_PATH_AS_INSITUTION_NAME__':
+                if data_path is not None:
+                    self.federated_simulation_institution_name = data_path
+                else:
+                    raise ValueError("When federated_simulation_institution_name is set to '__USE_DATA_PATH_AS_INSITUTION_NAME__', data_path must be provided.")
+            elif data_path is not None:
+                self.logger.warning('\nfederated_simulation_train_val_csv_path has been provided, so data_path will be ignored.\n')
+                    
         #############################################################
         # The above attributes apply only to data-usage='train-val' #
         #############################################################
@@ -264,8 +271,6 @@ class GANDLFData(object):
     def setup_for_train_val(self):
         self.set_dataframe_headers(self.train_val_headers, list_needed=True)
         if self.federated_simulation_train_val_csv_path is not None:
-            if self.data_path is not None:
-                self.logger.warning('\nfederated_simulation_train_val_csv_path has been provided, so data_path will be ignored.\n')
             self.setup_for_train_val_no_cross_run_state()
         else:
             self.setup_for_train_val_w_cross_run_state()
