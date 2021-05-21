@@ -280,19 +280,21 @@ class GANDLFData(object):
         # load the train val csv (should have info on sample paths for the train and val set of
         # all insitutions of a federated learninng simulation
         train_val_paths = pd.read_csv(self.federated_simulation_train_val_csv_path, dtype=str)
-        if 'InstitutionName' not in train_val_paths.columns:
-                raise ValueError("The train val csv must contain an 'InstitutionName' column, and it does not.")
+        if 'Partition_ID' not in train_val_paths.columns:
+                raise ValueError("The train val csv must contain an 'Partition_ID' column, and it does not.")
         if 'TrainOrVal' not in train_val_paths.columns:
                 raise ValueError("The train val csv must contain a 'TrainOrVal' column, and it does not.")
         for header in self.headers_list:
             if (header is not None) and (str(header) not in train_val_paths.columns):
                 raise ValueError('The columns of the train val csv must contain all of {} and {} is not present in {}.'.format(self.headers_list, header, train_val_paths.columns))
 
+        print("\nplace 1\n")
+
         # now convert the headers that are numstrings to numbers
         train_val_paths.rename(self.numstring_to_num_headers, axis=1, inplace=True)
 
         # restrict to the institution provided in the __init__ parameters
-        train_val_paths = train_val_paths[train_val_paths['InstitutionName']==self.federated_simulation_institution_name]
+        train_val_paths = train_val_paths[train_val_paths['Partition_ID']==self.federated_simulation_institution_name]
         
         train_dataframe = train_val_paths[train_val_paths['TrainOrVal']=='train']
         val_dataframe = train_val_paths[train_val_paths['TrainOrVal']=='val']
@@ -301,6 +303,8 @@ class GANDLFData(object):
         columns_to_drop = list(set(list(train_val_paths.columns)).difference(set(self.headers_list)))
         train_dataframe.drop(columns_to_drop, axis=1, inplace=True)
         val_dataframe.drop(columns_to_drop, axis=1, inplace=True)
+
+        print("\nPlace 2\n")
 
         self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
         
