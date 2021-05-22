@@ -294,6 +294,7 @@ class GANDLFData(object):
         train_val_paths.rename(self.numstring_to_num_headers, axis=1, inplace=True)
 
         # restrict to the institution provided in the __init__ parameters
+        print("Looking for data paths with Partition_ID=", self.federated_simulation_institution_name)
         train_val_paths = train_val_paths[train_val_paths['Partition_ID']==self.federated_simulation_institution_name]
         
         train_dataframe = train_val_paths[train_val_paths['TrainOrVal']=='train']
