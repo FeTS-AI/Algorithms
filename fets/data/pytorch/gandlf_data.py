@@ -288,8 +288,6 @@ class GANDLFData(object):
             if (header is not None) and (str(header) not in train_val_paths.columns):
                 raise ValueError('The columns of the train val csv must contain all of {} and {} is not present in {}.'.format(self.headers_list, header, train_val_paths.columns))
 
-        print("\nplace 1\n")
-
         # now convert the headers that are numstrings to numbers
         train_val_paths.rename(self.numstring_to_num_headers, axis=1, inplace=True)
 
@@ -304,8 +302,6 @@ class GANDLFData(object):
         columns_to_drop = list(set(list(train_val_paths.columns)).difference(set(self.headers_list)))
         train_dataframe.drop(columns_to_drop, axis=1, inplace=True)
         val_dataframe.drop(columns_to_drop, axis=1, inplace=True)
-
-        print("\nPlace 2\n")
 
         self.set_train_and_val_loaders(train_dataframe=train_dataframe, val_dataframe=val_dataframe)
         
