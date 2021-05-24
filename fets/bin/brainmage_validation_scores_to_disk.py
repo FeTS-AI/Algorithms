@@ -134,7 +134,7 @@ def main(data_path,
         label_path = subject['label']['path'][0]
         subdir_name = label_path.split('/')[-2]
         
-        features, ground_truth = subject_to_feature_and_label(subject=subject)
+        features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
                                     
         # Infer with patching
         sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
