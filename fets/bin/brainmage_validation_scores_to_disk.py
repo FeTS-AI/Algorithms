@@ -31,12 +31,16 @@ val_output_shape = [1, len(class_list), 240, 240, 155]
         
 
 
-def subject_to_feature_and_label(subject):
+def subject_to_feature_and_label(subject, class_list):
+    # get
     features = torch.cat([subject[key][torchio.DATA] for key in ['1', '2', '3', '4']], dim=1)
-    
-    label = subject['label'][torchio.DATA]
-        
+    nan_check(tensor=features, tensor_description='features tensor')   
     print("Constructed features from subject with shape", features.shape)
+
+    label = subject['label'][torchio.DATA]
+    # one-hot encoding of ground truth
+    label = one_hot(label, class_list).float()
+    nan_check(tensor=label, tensor_description='one_hot ground truth label tensor')
     print("Constructed label from subject with shape",label.shape)
         
     return features, label
