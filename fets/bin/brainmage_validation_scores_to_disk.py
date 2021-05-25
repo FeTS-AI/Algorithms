@@ -146,7 +146,7 @@ def main(data_path,
 
         # get the validation scores
         dice_dict = fets_phase2_validation(output=output, 
-                                           target=one_hot(segmask_array=ground_truth, class_list=class_list), 
+                                           target=ground_truth, 
                                            class_list=class_list, 
                                            to_scalar=True)
 
