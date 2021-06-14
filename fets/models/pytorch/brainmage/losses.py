@@ -259,7 +259,8 @@ def fets_phase2_validation(output,
                            class_list, 
                            class_axis=1, 
                            to_scalar=True,
-                           challenge_reduced_output=False, 
+                           challenge_reduced_output=False,
+                           challenge_remove_hausdorff=False, 
                            **kwargs):
     # some sanity checks
     check_shapes_same(output=output, target=target)
@@ -302,13 +303,14 @@ def fets_phase2_validation(output,
                                      data_already_processed=True,
                                      to_scalar=to_scalar, 
                                      **kwargs))
-
-    all_validation.update(brats_hausdorff(output=outputs_binary,
-                                          target=targets_binary, 
-                                          tag='binary_', 
-                                          data_already_processed=True,
-                                          to_scalar=to_scalar, 
-                                          **kwargs))
+    
+    if not challenge_remove_hausdorff:
+        all_validation.update(brats_hausdorff(output=outputs_binary,
+                                            target=targets_binary, 
+                                            tag='binary_', 
+                                            data_already_processed=True,
+                                            to_scalar=to_scalar, 
+                                            **kwargs))
 
     if not challenge_reduced_output:
         all_validation.update(brats_sensitivity(output=outputs_binary,
