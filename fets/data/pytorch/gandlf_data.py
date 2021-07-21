@@ -683,7 +683,7 @@ class GANDLFData(object):
         if train:
             loader = DataLoader(data, shuffle=True, batch_size=self.batch_size, worker_init_fn=seed_worker)
         else:
-            loader = DataLoader(data, shuffle=False, batch_size=1)
+            loader = DataLoader(data, shuffle=False, batch_size=1, , worker_init_fn=seed_worker)
         
         companion_loader = None
         if train:
