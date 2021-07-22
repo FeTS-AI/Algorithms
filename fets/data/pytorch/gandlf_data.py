@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torchio
 import pandas as pd
+import random
 
 from torch.utils.data import DataLoader
 
@@ -671,10 +672,21 @@ class GANDLFData(object):
                                    augmentations=augmentations, 
                                    preprocessing=self.preprocessing, 
                                    in_memory=self.in_memory)
+
+        ## added for reproducibility
+        def seed_worker(worker_id):
+            worker_seed = torch.initial_seed() % 2**32
+            numpy.random.seed(worker_seed)
+            random.seed(worker_seed)
+        
+        g = torch.Generator()
+        g.manual_seed(0)
+        ## added for reproducibility
+
         if train:
-            loader = DataLoader(data, shuffle=True, batch_size=self.batch_size)
+            loader = DataLoader(data, shuffle=True, batch_size=self.batch_size, worker_init_fn=seed_worker, generator=g)
         else:
-            loader = DataLoader(data, shuffle=False, batch_size=1)
+            loader = DataLoader(data, shuffle=False, batch_size=1, worker_init_fn=seed_worker, generator=g)
         
         companion_loader = None
         if train:
