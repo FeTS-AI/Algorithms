@@ -87,9 +87,16 @@ def main(data_path,
          output_pardir, 
          model_output_tag,
          device, 
-         legacy_model_flag=False):
+         process_training_data=False,
+         legacy_model_flag=False,
+         model_per_region=False):
 
     flplan = parse_fl_plan(plan_path)
+
+    # region to channel
+    region_to_channel = {'ET': 0, 'TC': 1, 'WT': 2}
+    # region processing order
+    region_processing_order = ['WT', 'TC', 'ET']
 
     # make sure the class list we are using is compatible with the hard-coded class_list above
     if flplan['data_object_init']['init_kwargs']['class_list'] != class_list:
@@ -109,16 +116,31 @@ def main(data_path,
     if not issubclass(model.__class__, BrainMaGeModel):
         raise ValueError('This script is currently assumed to be using a child of fets.models.pytorch.brainmage.BrainMaGeModel, you are using: ', data.__class__.__name__)
 
-    # legacy models are defined in a single file, newer ones have a folder that holds per-layer files
-    if legacy_model_flag:
-        tensor_dict_from_proto = load_legacy_model_protobuf(model_weights_path) 
-    else:
-        tensor_dict_from_proto = load_model(model_weights_path)
+    # if a model per region, we append 'ET', 'WT', and 'TC' to path and load these as well
+    if model_per_region:
+        if legacy_model_flag:
+            raise ValueError('Model per region and legacy model flag are incompatible.')
+        _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())
 
-    # restore any tensors held out from the proto
-    _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())        
-    tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
-    model.set_tensor_dict(tensor_dict, with_opt_vars=False) 
+        # get the per-region model weights
+        model_tensor_dicts = {}    
+        for region in region_processing_order:
+            tensor_dict_from_proto = load_model(os.path.join(model_weights_path, region))
+            tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
+            model_tensor_dicts[region] = tensor_dict
+
+    # otherwise we just have a single model
+    else:    
+        # legacy models are defined in a single file, newer ones have a folder that holds per-layer files
+        if legacy_model_flag:
+            tensor_dict_from_proto = load_legacy_model_protobuf(model_weights_path) 
+        else:
+            tensor_dict_from_proto = load_model(model_weights_path)
+
+        # restore any tensors held out from the proto
+        _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())        
+        tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
+        model.set_tensor_dict(tensor_dict, with_opt_vars=False)
 
     print("\nWill be running inference on {} validation samples.\n".format(model.get_validation_data_size()))
 
@@ -128,33 +150,58 @@ def main(data_path,
     subdir_to_score = {}
     score_outpath = os.path.join(output_pardir, model_output_tag + '_subdirs_to_scores.pkl')
 
-    for subject in data.get_val_loader():
-        
-        # infer the subject name from the label path
-        label_path = subject['label']['path'][0]
-        subdir_name = label_path.split('/')[-2]
-        
-        features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
-                                    
-        # Infer with patching
-        sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
-        output = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], 
-                                                        features=features)
-        nan_check(tensor=output)
-        nan_check(tensor=output, tensor_description='model output tensor')
-        sanity_check_val_output_shape(output=output, val_output_shape=val_output_shape)
+    # we either process just the validation data or both training and validation data
+    loaders = [data.get_val_loader()]
+    if process_training_data:
+        loaders.append(data.get_train_loader())
 
-        # get the validation scores
-        dice_dict = fets_phase2_validation(output=output, 
-                                           target=ground_truth, 
-                                           class_list=class_list, 
-                                           to_scalar=True)
+    for loader in loaders:
+        for subject in loader:
+            # infer the subject name from the label path
+            label_path = subject['label']['path'][0]
+            subdir_name = label_path.split('/')[-2]
+            
+            features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
 
-        if subdir_to_score.get(subdir_name) is not None:
-            raise ValueError('Trying to overwrite a second score for the subidir: {}'.format(subdir_name))
-        subdir_to_score[subdir_name] = dice_dict
+            # Infer with patching
+            sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
+            if model_per_region:
+                output = None
+                for region in region_processing_order:
+                    # have to copy due to pop :(
+                    model.set_tensor_dict(model_tensor_dicts[region].copy(), with_opt_vars=False)
+                    o = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
+                    if output is None:
+                        # the WT model sets the base image
+                        output = o
+                    else:
+                        # the TC model and ET model overlay their respective regions (in that order)
+                        # determine the channel to overlay
+                        channel = region_to_channel[region]
 
-        print("\nScores for record {} were: {}\n".format(subdir_name, dice_dict))
+                        # overlay the channel
+                        print("sum of", region, 'prior to overlay:', output[:, channel].sum())
+                        output[:, channel] = o[:, channel]
+                        print("sum of", region, 'after overlay:', output[:, channel].sum())
+            else:                                  
+                output = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], 
+                                                                features=features)
+
+            nan_check(tensor=output)
+            nan_check(tensor=output, tensor_description='model output tensor')
+            sanity_check_val_output_shape(output=output, val_output_shape=val_output_shape)
+
+            # get the validation scores
+            dice_dict = fets_phase2_validation(output=output, 
+                                            target=ground_truth, 
+                                            class_list=class_list, 
+                                            to_scalar=True)
+
+            if subdir_to_score.get(subdir_name) is not None:
+                raise ValueError('Trying to overwrite a second score for the subidir: {}'.format(subdir_name))
+            subdir_to_score[subdir_name] = dice_dict
+
+            print("\nScores for record {} were: {}\n".format(subdir_name, dice_dict))
         
     print("Saving subdir_name_to_scores at: ", score_outpath)
     with open(score_outpath, 'wb') as _file:
@@ -165,9 +212,11 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', '-dp', type=str, required=True, help='Absolute path to the data folder.')
     parser.add_argument('--plan_path', '-pp', type=str, required=True, help='Absolute path to the plan file.')
     parser.add_argument('--model_weights_path', '-mwp', type=str, required=True)
+    parser.add_argument('--model_per_region', '-mpr', action='store_true')
     parser.add_argument('--output_pardir', '-op', type=str, required=True)
     parser.add_argument('--model_output_tag', '-mot', type=str, default='test_tag')
     parser.add_argument('--legacy_model_flag', '-lm', action='store_true')
     parser.add_argument('--device', '-dev', type=str, default='cpu', required=False)
+    parser.add_argument('--process_training_data', '-ptd', action='store_true')
     args = parser.parse_args()
     main(**vars(args))
