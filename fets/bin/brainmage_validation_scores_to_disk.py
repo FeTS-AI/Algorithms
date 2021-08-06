@@ -83,20 +83,21 @@ def sanity_check_val_output_shape(output, val_output_shape):
 #########################################################################################
 def main(data_path, 
          plan_path,
-         model_weights_path, 
+         model_weights_path_wt,
+         model_weights_path_et,
+         model_weights_path_tc, 
          output_pardir, 
          model_output_tag,
-         device, 
-         process_training_data=False,
-         legacy_model_flag=False,
-         model_per_region=False):
+         device,
+         process_training_data=False):
 
     flplan = parse_fl_plan(plan_path)
 
-    # region to channel
-    region_to_channel = {'ET': 0, 'TC': 1, 'WT': 2}
-    # region processing order
-    region_processing_order = ['WT', 'TC', 'ET']
+    channel_to_region = {
+        0: 'ET',
+        1: 'TC',
+        2: 'WT'
+    }
 
     # make sure the class list we are using is compatible with the hard-coded class_list above
     if flplan['data_object_init']['init_kwargs']['class_list'] != class_list:
@@ -116,31 +117,8 @@ def main(data_path,
     if not issubclass(model.__class__, BrainMaGeModel):
         raise ValueError('This script is currently assumed to be using a child of fets.models.pytorch.brainmage.BrainMaGeModel, you are using: ', data.__class__.__name__)
 
-    # if a model per region, we append 'ET', 'WT', and 'TC' to path and load these as well
-    if model_per_region:
-        if legacy_model_flag:
-            raise ValueError('Model per region and legacy model flag are incompatible.')
-        _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())
-
-        # get the per-region model weights
-        model_tensor_dicts = {}    
-        for region in region_processing_order:
-            tensor_dict_from_proto = load_model(os.path.join(model_weights_path, region))
-            tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
-            model_tensor_dicts[region] = tensor_dict
-
-    # otherwise we just have a single model
-    else:    
-        # legacy models are defined in a single file, newer ones have a folder that holds per-layer files
-        if legacy_model_flag:
-            tensor_dict_from_proto = load_legacy_model_protobuf(model_weights_path) 
-        else:
-            tensor_dict_from_proto = load_model(model_weights_path)
-
-        # restore any tensors held out from the proto
-        _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())        
-        tensor_dict = {**tensor_dict_from_proto, **holdout_tensors}
-        model.set_tensor_dict(tensor_dict, with_opt_vars=False)
+    # get the holdout tensors
+    _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())
 
     print("\nWill be running inference on {} validation samples.\n".format(model.get_validation_data_size()))
 
@@ -156,6 +134,32 @@ def main(data_path,
         loaders.append(data.get_train_loader())
         print("\nWill be running inference on {} training samples.\n".format(model.get_training_data_size()))
 
+    # make all paths canonical
+    model_weights_path_wt = os.path.realpath(model_weights_path_wt)
+    model_weights_path_et = os.path.realpath(model_weights_path_et)
+    model_weights_path_tc = os.path.realpath(model_weights_path_tc)
+
+    # determine unique models
+    unique_model_paths = set([model_weights_path_wt, model_weights_path_et, model_weights_path_tc])
+    print('loading models:')
+    for p in unique_model_paths:
+        print('\t', p)
+
+    # load the unique models
+    model_path_to_weights = {p: {**load_model(p), **holdout_tensors} for p in unique_model_paths}
+
+    # map unique models to channels
+    model_path_to_channels = {p: [] for p in unique_model_paths}
+    for p in unique_model_paths:
+        if p == model_weights_path_wt:
+            model_path_to_channels[p].append(2)
+        if p == model_weights_path_tc:
+            model_path_to_channels[p].append(1)
+        if p == model_weights_path_et:
+            model_path_to_channels[p].append(0)
+
+    print(model_path_to_channels)
+
     for loader in loaders:
         for subject in loader:
             # infer the subject name from the label path
@@ -164,7 +168,7 @@ def main(data_path,
             
             features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
 
-            # Infer with patching
+            # skip samples of the wrong shape
             try:
                 sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
             except ValueError as e:
@@ -172,27 +176,24 @@ def main(data_path,
                 print(getattr(e, 'message', repr(e)))
                 print("skipping subject")
                 continue
-            if model_per_region:
-                output = None
-                for region in region_processing_order:
-                    # have to copy due to pop :(
-                    model.set_tensor_dict(model_tensor_dicts[region].copy(), with_opt_vars=False)
-                    o = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
-                    if output is None:
-                        # the WT model sets the base image
-                        output = o
-                    else:
-                        # the TC model and ET model overlay their respective regions (in that order)
-                        # determine the channel to overlay
-                        channel = region_to_channel[region]
 
-                        # overlay the channel
-                        print("sum of", region, 'prior to overlay:', output[:, channel].sum())
+            # Infer with patching
+            output = None
+            for path, weights in model_path_to_weights.items():
+                print('Running inference with', path)
+                # have to copy due to pop :(
+                model.set_tensor_dict(weights.copy(), with_opt_vars=False)
+                o = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
+                if output is None:
+                    # the first model sets the base output
+                    output = o
+                else:
+                    # determine which region(s) this model is used for
+                    for channel in model_path_to_channels[path]:
                         output[:, channel] = o[:, channel]
-                        print("sum of", region, 'after overlay:', output[:, channel].sum())
-            else:                                  
-                output = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], 
-                                                                features=features)
+
+                        # log update of channel
+                        print('Used model', path, 'to update channel', channel, '({})'.format(channel_to_region[channel]))
 
             nan_check(tensor=output)
             nan_check(tensor=output, tensor_description='model output tensor')
@@ -218,11 +219,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', '-dp', type=str, required=True, help='Absolute path to the data folder.')
     parser.add_argument('--plan_path', '-pp', type=str, required=True, help='Absolute path to the plan file.')
-    parser.add_argument('--model_weights_path', '-mwp', type=str, required=True)
-    parser.add_argument('--model_per_region', '-mpr', action='store_true')
+    parser.add_argument('--model_weights_path_wt', '-WT', type=str, required=True)
+    parser.add_argument('--model_weights_path_et', '-ET', type=str, required=True)
+    parser.add_argument('--model_weights_path_tc', '-TC', type=str, required=True)
     parser.add_argument('--output_pardir', '-op', type=str, required=True)
     parser.add_argument('--model_output_tag', '-mot', type=str, default='test_tag')
-    parser.add_argument('--legacy_model_flag', '-lm', action='store_true')
+    # parser.add_argument('--legacy_model_flag', '-lm', action='store_true')
     parser.add_argument('--device', '-dev', type=str, default='cpu', required=False)
     parser.add_argument('--process_training_data', '-ptd', action='store_true')
     args = parser.parse_args()
