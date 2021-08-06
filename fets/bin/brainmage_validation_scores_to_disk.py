@@ -168,7 +168,7 @@ def main(data_path,
             try:
                 sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
             except ValueError as e:
-                print("Sanity check for", subject, "failed with exception:")
+                print("Sanity check for", subdir_name, "failed with exception:")
                 print(getattr(e, 'message', repr(e)))
                 print("skipping subject")
                 continue
