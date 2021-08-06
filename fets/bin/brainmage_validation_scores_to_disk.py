@@ -154,6 +154,7 @@ def main(data_path,
     loaders = [data.get_val_loader()]
     if process_training_data:
         loaders.append(data.get_train_loader())
+        print("\nWill be running inference on {} training samples.\n".format(model.get_training_data_size()))
 
     for loader in loaders:
         for subject in loader:
@@ -168,7 +169,7 @@ def main(data_path,
                 sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
             except ValueError as e:
                 print("Sanity check for", subject, "failed with exception:")
-                print(repr(e))
+                print(getattr(e, 'message', repr(e)))
                 print("skipping subject")
                 continue
             if model_per_region:
