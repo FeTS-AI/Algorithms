@@ -164,7 +164,13 @@ def main(data_path,
             features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
 
             # Infer with patching
-            sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
+            try:
+                sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
+            except ValueError as e:
+                print("Sanity check for", subject, "failed with exception:")
+                print(repr(e))
+                print("skipping subject")
+                continue
             if model_per_region:
                 output = None
                 for region in region_processing_order:
