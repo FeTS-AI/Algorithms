@@ -147,6 +147,12 @@ class GANDLFData(object):
         self.train_val_headers['labelHeader'] = self.numeric_header_names[self.label_tag]
         self.train_val_headers['predictionHeaders'] = []
         
+        self.scoring_headers = {}
+        self.scoring_headers['subjectIDHeader'] = 0
+        self.scoring_headers['channelHeaders'] = [self.numeric_header_names[mode] for mode in self.feature_modes]
+        self.scoring_headers['labelHeader'] = self.numeric_header_names[self.label_tag]
+        self.scoring_headers['predictionHeaders'] = []
+        
         self.inference_headers = {}
         self.inference_headers['subjectIDHeader'] = 0
         self.inference_headers['channelHeaders'] = [self.numeric_header_names[mode] for mode in self.feature_modes]
@@ -260,10 +266,18 @@ class GANDLFData(object):
         # append the split info directory
         self.excluded_subdirs.append(self.split_info_dirname)
         
+        # initialize loaders to empty
+        self.train_loader = []
+        self.val_loader = []
+        self.inference_loader = []
+        self.scoring_loader = []
+
         if data_usage == 'train-val':
             self.setup_for_train_val()
         elif data_usage == 'inference':
-            self.setup_for_inference()        
+            self.setup_for_inference()
+        elif data_usage == 'scoring':
+            self.setup_for_scoring()
         else:
             raise ValueError('data_usage needs to be either train-val or inference')
         
@@ -650,6 +664,16 @@ class GANDLFData(object):
         self.val_loader = []
         self.inference_loader, _ = self.get_loaders(data_frame=inference_dataframe, train=False, augmentations=None)
 
+    def setup_for_scoring(self):
+        self.set_dataframe_headers(self.scoring_headers, list_needed=True)
+        uids = self.get_data_uids_from_disk(include_labels=True)
+        dataframe = self.create_dataframe(uids, include_labels=True)
+        
+        self.train_loader = []
+        self.penalty_loader = []
+        self.val_loader = []
+        self.inference_loader = []
+        self.scoring_loader, _ = self.get_loaders(data_frame=dataframe, train=False, augmentations=None)
     
     def create_inference_dataframe(self):
         inference_uids = self.get_data_uids_from_disk(include_labels=False)
@@ -881,6 +905,9 @@ class GANDLFData(object):
 
     def get_inference_loader(self):
         return self.inference_loader
+
+    def get_scoring_loader(self):
+        return self.scoring_loader
 
     def get_penalty_loader(self):
         return self.penalty_loader

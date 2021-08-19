@@ -105,7 +105,7 @@ def main(data_path,
 
     if process_training_data:
         # patch the plan to set the data use to inference
-        flplan['data_object_init']['init_kwargs']['data_usage'] = 'inference'    
+        flplan['data_object_init']['init_kwargs']['data_usage'] = 'scoring'    
 
     # construct the data object
     data = create_data_object_with_explicit_data_path(flplan=flplan, data_path=data_path)
@@ -133,12 +133,12 @@ def main(data_path,
     # we either want the validation loader or the inference loader
     if process_training_data:
         # inference loader doesn't split the data, so the training data will get processed as well
-        loader = data.get_inference_loader()
+        loader = data.get_scoring_loader()
     else:
         # otherwise, we only want the validation loader
         loader = data.get_val_loader()
 
-    print("\nWill be running inference on {}  samples.\n".format(model.get_training_data_size()))
+    print("\nWill be scoring {} samples.\n".format(len(loader)))
 
     # make all paths canonical
     model_weights_path_wt = os.path.realpath(model_weights_path_wt)
