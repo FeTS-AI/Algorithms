@@ -103,6 +103,10 @@ def main(data_path,
     if flplan['data_object_init']['init_kwargs']['class_list'] != class_list:
         raise ValueError('We currently only support class_list=', class_list)
 
+    if process_training_data:
+        # patch the plan to set the data use to inference
+        flplan['data_object_init']['init_kwargs']['data_usage'] = 'inference'    
+
     # construct the data object
     data = create_data_object_with_explicit_data_path(flplan=flplan, data_path=data_path)
 
@@ -120,19 +124,21 @@ def main(data_path,
     # get the holdout tensors
     _, holdout_tensors = split_tensor_dict_for_holdouts(None, model.get_tensor_dict())
 
-    print("\nWill be running inference on {} validation samples.\n".format(model.get_validation_data_size()))
-
     if not os.path.exists(output_pardir):
         os.mkdir(output_pardir)
 
     subdir_to_score = {}
     score_outpath = os.path.join(output_pardir, model_output_tag + '_subdirs_to_scores.pkl')
 
-    # we either process just the validation data or both training and validation data
-    loaders = [data.get_val_loader()]
+    # we either want the validation loader or the inference loader
     if process_training_data:
-        loaders.append(data.get_train_loader())
-        print("\nWill be running inference on {} training samples.\n".format(model.get_training_data_size()))
+        # inference loader doesn't split the data, so the training data will get processed as well
+        loader = data.get_inference_loader()
+    else:
+        # otherwise, we only want the validation loader
+        loader = data.get_val_loader()
+
+    print("\nWill be running inference on {}  samples.\n".format(model.get_training_data_size()))
 
     # make all paths canonical
     model_weights_path_wt = os.path.realpath(model_weights_path_wt)
@@ -160,56 +166,55 @@ def main(data_path,
 
     print(model_path_to_channels)
 
-    for loader in loaders:
-        for subject in loader:
-            # infer the subject name from the label path
-            label_path = subject['label']['path'][0]
-            subdir_name = label_path.split('/')[-2]
-            
-            features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
+    for subject in loader:
+        # infer the subject name from the label path
+        label_path = subject['label']['path'][0]
+        subdir_name = label_path.split('/')[-2]
+        
+        features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
 
-            # skip samples of the wrong shape
-            try:
-                sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
-            except ValueError as e:
-                print("Sanity check for", subdir_name, "failed with exception:")
-                print(getattr(e, 'message', repr(e)))
-                print("skipping subject")
-                continue
+        # skip samples of the wrong shape
+        try:
+            sanity_check_val_input_shape(features=features, val_input_shape=val_input_shape)
+        except ValueError as e:
+            print("Sanity check for", subdir_name, "failed with exception:")
+            print(getattr(e, 'message', repr(e)))
+            print("skipping subject")
+            continue
 
-            # Infer with patching
-            output = None
-            for path, weights in model_path_to_weights.items():
-                print('Running inference with', path)
-                # have to copy due to pop :(
-                model.set_tensor_dict(weights.copy(), with_opt_vars=False)
-                o = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
-                if output is None:
-                    # the first model sets the base output
-                    output = o
-                else:
-                    # determine which region(s) this model is used for
-                    for channel in model_path_to_channels[path]:
-                        output[:, channel] = o[:, channel]
+        # Infer with patching
+        output = None
+        for path, weights in model_path_to_weights.items():
+            print('Running inference with', path)
+            # have to copy due to pop :(
+            model.set_tensor_dict(weights.copy(), with_opt_vars=False)
+            o = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
+            if output is None:
+                # the first model sets the base output
+                output = o
+            else:
+                # determine which region(s) this model is used for
+                for channel in model_path_to_channels[path]:
+                    output[:, channel] = o[:, channel]
 
-                        # log update of channel
-                        print('Used model', path, 'to update channel', channel, '({})'.format(channel_to_region[channel]))
+                    # log update of channel
+                    print('Used model', path, 'to update channel', channel, '({})'.format(channel_to_region[channel]))
 
-            nan_check(tensor=output)
-            nan_check(tensor=output, tensor_description='model output tensor')
-            sanity_check_val_output_shape(output=output, val_output_shape=val_output_shape)
+        nan_check(tensor=output)
+        nan_check(tensor=output, tensor_description='model output tensor')
+        sanity_check_val_output_shape(output=output, val_output_shape=val_output_shape)
 
-            # get the validation scores
-            dice_dict = fets_phase2_validation(output=output, 
-                                            target=ground_truth, 
-                                            class_list=class_list, 
-                                            to_scalar=True)
+        # get the validation scores
+        dice_dict = fets_phase2_validation(output=output, 
+                                        target=ground_truth, 
+                                        class_list=class_list, 
+                                        to_scalar=True)
 
-            if subdir_to_score.get(subdir_name) is not None:
-                raise ValueError('Trying to overwrite a second score for the subidir: {}'.format(subdir_name))
-            subdir_to_score[subdir_name] = dice_dict
+        if subdir_to_score.get(subdir_name) is not None:
+            raise ValueError('Trying to overwrite a second score for the subidir: {}'.format(subdir_name))
+        subdir_to_score[subdir_name] = dice_dict
 
-            print("\nScores for record {} were: {}\n".format(subdir_name, dice_dict))
+        print("\nScores for record {} were: {}\n".format(subdir_name, dice_dict))
         
     print("Saving subdir_name_to_scores at: ", score_outpath)
     with open(score_outpath, 'wb') as _file:
