@@ -186,10 +186,6 @@ def main(data_path,
         copy_label_path = os.path.join(output_subdir, label_file)
         shutil.copyfile(label_path, copy_label_path)
 
-
-        #TODO  replace all subfolder with subdir_name
-        
-        
         features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
 
         # skip samples of the wrong shape
@@ -222,11 +218,6 @@ def main(data_path,
         nan_check(tensor=output)
         nan_check(tensor=output, tensor_description='model output tensor')
         sanity_check_val_output_shape(output=output, val_output_shape=val_output_shape)
-
-        # TODO: Do we need to transpose the output (for sitk)?
-        # ?? GANDLFData loader produces transposed output from what sitk gets from file, so transposing here.
-        # output = np.transpose( output, [0, 3, 2, 1])
-
 
         # get the validation scores
         dice_dict = fets_phase2_validation(output=output, 
