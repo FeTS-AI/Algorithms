@@ -16,6 +16,7 @@ from openfl.flplan import create_data_object_with_explicit_data_path, parse_fl_p
 from fets.data.pytorch.gandlf_data import GANDLFData
 from fets.models.pytorch.brainmage.brainmage import BrainMaGeModel
 from fets.models.pytorch.brainmage.losses import fets_phase2_validation
+from fets.data.pytorch import new_labels_from_float_output
 
 from GANDLF.utils import one_hot
 
@@ -89,7 +90,8 @@ def main(data_path,
          output_pardir, 
          model_output_tag,
          device,
-         process_training_data=False):
+         process_training_data=False,
+         write_outputs=False):
 
     flplan = parse_fl_plan(plan_path)
 
@@ -168,8 +170,25 @@ def main(data_path,
 
     for subject in loader:
         # infer the subject name from the label path
+        first_mode_path = subject['1']['path'][0]
         label_path = subject['label']['path'][0]
         subdir_name = label_path.split('/')[-2]
+        label_file = label_path.split('/')[-1]
+
+
+        #prep the path for the output files
+        output_subdir = os.path.join(output_pardir, subdir_name)
+        if not os.path.exists(output_subdir):
+            os.mkdir(output_subdir)
+        inference_outpath = os.path.join(output_subdir, subdir_name + model_output_tag + '_seg.nii.gz')
+
+        # copy the label file over to the output subdir
+        copy_label_path = os.path.join(output_subdir, label_file)
+        shutil.copyfile(label_path, copy_label_path)
+
+
+        #TODO  replace all subfolder with subdir_name
+        
         
         features, ground_truth = subject_to_feature_and_label(subject=subject, class_list=class_list)
 
@@ -204,6 +223,11 @@ def main(data_path,
         nan_check(tensor=output, tensor_description='model output tensor')
         sanity_check_val_output_shape(output=output, val_output_shape=val_output_shape)
 
+        # TODO: Do we need to transpose the output (for sitk)?
+        # ?? GANDLFData loader produces transposed output from what sitk gets from file, so transposing here.
+        # output = np.transpose( output, [0, 3, 2, 1])
+
+
         # get the validation scores
         dice_dict = fets_phase2_validation(output=output, 
                                         target=ground_truth, 
@@ -215,6 +239,25 @@ def main(data_path,
         subdir_to_score[subdir_name] = dice_dict
 
         print("\nScores for record {} were: {}\n".format(subdir_name, dice_dict))
+
+        if write_outputs:
+            output = np.squeeze(output.cpu().numpy())
+
+            # GANDLFData loader produces transposed output from what sitk gets from file, so transposing here.
+            output = np.transpose( output, [0, 3, 2, 1])
+
+            # process float outputs (accros output channels), providing 0, 1, 2, 4 labels for what we write to disc
+            output_in_0124 = new_labels_from_float_output(array=output,
+                                                         class_label_map={0:0, 1:1, 2:2, 4:4},
+                                                         binary_classification=False)
+
+            # convert array to SimpleITK image
+            image = sitk.GetImageFromArray(output_in_0124)
+
+            image.CopyInformation(sitk.ReadImage(first_mode_path))
+
+            print("\nWriting inference NIfTI image of shape {} to {}".format(output_in_0124.shape, inference_outpath))
+            sitk.WriteImage(image, inference_outpath)
         
     print("Saving subdir_name_to_scores at: ", score_outpath)
     with open(score_outpath, 'wb') as _file:
@@ -232,5 +275,6 @@ if __name__ == '__main__':
     # parser.add_argument('--legacy_model_flag', '-lm', action='store_true')
     parser.add_argument('--device', '-dev', type=str, default='cpu', required=False)
     parser.add_argument('--process_training_data', '-ptd', action='store_true')
+    parser.add_argument('--write_outputs', '-wo', action='store_true')
     args = parser.parse_args()
     main(**vars(args))
