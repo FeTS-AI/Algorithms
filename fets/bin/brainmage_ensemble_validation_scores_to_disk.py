@@ -24,8 +24,6 @@ from GANDLF.utils import one_hot
 # Hard coded parameters (Make sure these apply for your model) #
 ################################################################
 
-# TODO: Use nargs to bring in multiple models, fuse their outputs with max of all sigmoid over model outputs on each channel.
-
 
 # hard-coded class_list
 class_list = ['4', '1||4', '1||2||4']
@@ -86,21 +84,13 @@ def sanity_check_val_output_shape(output, val_output_shape):
 #########################################################################################
 def main(data_path, 
          plan_path,
-         model_weights_path_wt,
-         model_weights_path_et,
-         model_weights_path_tc, 
          output_pardir, 
          model_output_tag,
-         device,
+         device, 
+         model_path_list,
          process_training_data=False):
 
     flplan = parse_fl_plan(plan_path)
-
-    channel_to_region = {
-        0: 'ET',
-        1: 'TC',
-        2: 'WT'
-    }
 
     # make sure the class list we are using is compatible with the hard-coded class_list above
     if flplan['data_object_init']['init_kwargs']['class_list'] != class_list:
@@ -144,30 +134,10 @@ def main(data_path,
     print("\nWill be scoring {} samples.\n".format(len(loader)))
 
     # make all paths canonical
-    model_weights_path_wt = os.path.realpath(model_weights_path_wt)
-    model_weights_path_et = os.path.realpath(model_weights_path_et)
-    model_weights_path_tc = os.path.realpath(model_weights_path_tc)
+    model_path_list = [os.path.realpath(_path) for _path in model_path_list]
 
-    # determine unique models
-    unique_model_paths = set([model_weights_path_wt, model_weights_path_et, model_weights_path_tc])
-    print('loading models:')
-    for p in unique_model_paths:
-        print('\t', p)
-
-    # load the unique models
-    model_path_to_weights = {p: {**load_model(p), **holdout_tensors} for p in unique_model_paths}
-
-    # map unique models to channels
-    model_path_to_channels = {p: [] for p in unique_model_paths}
-    for p in unique_model_paths:
-        if p == model_weights_path_wt:
-            model_path_to_channels[p].append(2)
-        if p == model_weights_path_tc:
-            model_path_to_channels[p].append(1)
-        if p == model_weights_path_et:
-            model_path_to_channels[p].append(0)
-
-    print(model_path_to_channels)
+    # load the model weights into a dict
+    model_path_to_weights = {p: {**load_model(p), **holdout_tensors} for p in model_path_list}
 
     for subject in loader:
         # infer the subject name from the label path
@@ -185,23 +155,20 @@ def main(data_path,
             print("skipping subject")
             continue
 
+        output_sum = None
+
         # Infer with patching
-        output = None
         for path, weights in model_path_to_weights.items():
             print('Running inference with', path)
             # have to copy due to pop :(
             model.set_tensor_dict(weights.copy(), with_opt_vars=False)
-            o = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
-            if output is None:
-                # the first model sets the base output
-                output = o
-            else:
-                # determine which region(s) this model is used for
-                for channel in model_path_to_channels[path]:
-                    output[:, channel] = o[:, channel]
 
-                    # log update of channel
-                    print('Used model', path, 'to update channel', channel, '({})'.format(channel_to_region[channel]))
+            if output_sum is None:
+                output_sum = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
+            else:
+                output_sum = output_sum + output
+
+        output = output_sum / len(model_path_to_weights)
 
         nan_check(tensor=output)
         nan_check(tensor=output, tensor_description='model output tensor')
@@ -227,13 +194,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', '-dp', type=str, required=True, help='Absolute path to the data folder.')
     parser.add_argument('--plan_path', '-pp', type=str, required=True, help='Absolute path to the plan file.')
-    parser.add_argument('--model_weights_path_wt', '-WT', type=str, required=True)
-    parser.add_argument('--model_weights_path_et', '-ET', type=str, required=True)
-    parser.add_argument('--model_weights_path_tc', '-TC', type=str, required=True)
     parser.add_argument('--output_pardir', '-op', type=str, required=True)
     parser.add_argument('--model_output_tag', '-mot', type=str, default='test_tag')
     # parser.add_argument('--legacy_model_flag', '-lm', action='store_true')
     parser.add_argument('--device', '-dev', type=str, default='cpu', required=False)
     parser.add_argument('--process_training_data', '-ptd', action='store_true')
+    parser.add_argument("--model_path_list", nargs="+")
+
     args = parser.parse_args()
     main(**vars(args))
