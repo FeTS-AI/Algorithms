@@ -134,7 +134,12 @@ def main(data_path,
     print("\nWill be scoring {} samples.\n".format(len(loader)))
 
     # make all paths canonical
-    model_path_list = [os.path.realpath(_path) for _path in model_path_list]
+    if " " in model_path_list:
+        model_path_list = [os.path.realpath(_path) for _path in model_path_list]
+    elif "," in model_path_list:
+        model_path_list = [os.path.realpath(_path) for _path in model_path_list.split(',')]
+    else:
+        model_path_list = [os.path.realpath(model_path_list)]
 
     # load the model weights into a dict
     model_path_to_weights = {p: {**load_model(p), **holdout_tensors} for p in model_path_list}
