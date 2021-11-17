@@ -24,6 +24,9 @@ from GANDLF.utils import one_hot
 # Hard coded parameters (Make sure these apply for your model) #
 ################################################################
 
+# TODO: Use nargs to bring in multiple models, fuse their outputs with max of all sigmoid over model outputs on each channel.
+
+
 # hard-coded class_list
 class_list = ['4', '1||4', '1||2||4']
 val_input_shape = [1, 4, 240, 240, 155]
