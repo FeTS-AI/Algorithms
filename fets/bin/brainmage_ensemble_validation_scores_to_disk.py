@@ -90,6 +90,8 @@ def main(data_path,
          model_path_list,
          process_training_data=False):
 
+    print("Running an ensemble with models from the following paths: ", model_path_list)
+
     flplan = parse_fl_plan(plan_path)
 
     # make sure the class list we are using is compatible with the hard-coded class_list above
@@ -137,7 +139,7 @@ def main(data_path,
     model_path_list = [os.path.realpath(_path) for _path in model_path_list]
 
     # load the model weights into a dict
-    model_path_to_weights = {p: {**load_model(p), **holdout_tensors} for p in model_path_list}
+    model_path_weights_tuples = [(p,  {**load_model(p), **holdout_tensors}) for p in model_path_list]
 
     for subject in loader:
         # infer the subject name from the label path
@@ -158,17 +160,19 @@ def main(data_path,
         output_sum = None
 
         # Infer with patching
-        for path, weights in model_path_to_weights.items():
+        for path, weights in model_path_weights_tuples:
             print('Running inference with', path)
             # have to copy due to pop :(
             model.set_tensor_dict(weights.copy(), with_opt_vars=False)
 
-            if output_sum is None:
-                output_sum = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
-            else:
-                output_sum = output_sum + output
+            o = model.data.infer_with_crop_and_patches(model_inference_function=[model.infer_batch_with_no_numpy_conversion], features=features)
 
-        output = output_sum / len(model_path_to_weights)
+            if output_sum is None:
+                output_sum = o
+            else:
+                output_sum = output_sum + o
+
+        output = output_sum / len(model_path_weights_tuples)
 
         nan_check(tensor=output)
         nan_check(tensor=output, tensor_description='model output tensor')
