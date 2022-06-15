@@ -16,9 +16,11 @@ from openfl.flplan import create_data_object_with_explicit_data_path, parse_fl_p
 from fets.data.pytorch import new_labels_from_float_output
 from fets.data.pytorch.gandlf_data import GANDLFData
 from fets.models.pytorch.brainmage import BrainMaGeModel
-from fets.models.pytorch.brainmage.losses import clinical_dice
+from fets.models.pytorch.brainmage.losses import fets_phase2_validation
 
 from GANDLF.utils import one_hot
+
+
 
 
 ################################################################
@@ -169,7 +171,7 @@ def main(data_path,
         print(one_hot(segmask_array=ground_truth, class_list=class_list).shape, output.shape)
 
         # get the DICE score
-        dice_dict = clinical_dice(output=output, 
+        dice_dict = fets_phase2_validation(output=output, 
                                   target=one_hot(segmask_array=ground_truth, class_list=class_list), 
                                   class_list=class_list, 
                                   to_scalar=True)
