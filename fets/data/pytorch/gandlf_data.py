@@ -1,6 +1,8 @@
-
 # TODO:insert header pointing to GANDLF repo inclusion
 # TODO: Should the validation patch sampler be different from the training one?
+
+import sys
+sys.path.append('./OpenFederatedLearning/submodules/fets_ai/Algorithms/')
 
 import os, pathlib
 os.environ['TORCHIO_HIDE_CITATION_PROMPT'] = '1' # hides torchio citation request, see https://github.com/fepegar/torchio/issues/235
@@ -16,7 +18,7 @@ from torch.utils.data import DataLoader
 import SimpleITK as sitk
 
 # put GANDLF in as a submodule staat pip install
-from GANDLF.data.ImagesFromDataFrame import ImagesFromDataFrame
+from GANDLF_modules.data.ImagesFromDataFrame import ImagesFromDataFrame
 
 from fets.data.gandlf_utils import get_dataframe_and_headers
 from fets.data import get_appropriate_file_paths_from_subject_dir

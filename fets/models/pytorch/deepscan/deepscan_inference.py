@@ -5,6 +5,8 @@
 
 # Lightly refactored for FeTS inference by Micah Sheller (Intel Corporation) 
 # Refactoring changes were primarily 1) removing training code and 2) changing from script to module (e.g. global variables to member variables). 
+import sys
+sys.path.append('./OpenFederatedLearning/submodules/fets_ai/Algorithms/')
 
 import argparse
 import os

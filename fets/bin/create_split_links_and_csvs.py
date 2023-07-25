@@ -1,8 +1,11 @@
+import sys
+sys.path.append('./OpenFederatedLearning/submodules/fets_ai/Algorithms/GANDLF/')
+
 import argparse
 import os
 import numpy as np
 
-from GANDLF.utils import writeTrainingCSV
+from GANDLF_modules.utils import writeTrainingCSV
 
 
 def create_part(subfolder_names, actualfiles_dir, link_dirpath):

@@ -1,3 +1,6 @@
+import sys
+sys.path.append('./OpenFederatedLearning/submodules/fets_ai/Algorithms/')
+
 import argparse
 import os
 import shutil
@@ -18,7 +21,7 @@ from fets.data.pytorch.gandlf_data import GANDLFData
 from fets.models.pytorch.brainmage import BrainMaGeModel
 from fets.models.pytorch.brainmage.losses import clinical_dice
 
-from GANDLF.utils import one_hot
+from GANDLF_modules.utils import one_hot
 
 
 ################################################################

@@ -1,5 +1,7 @@
 # The following code is modified from code within this same repository, as well as from https://github.com/IntelLabs/OpenFederatedLearning. 
 # TODO: check that header is sufficient.
+import sys
+sys.path.append('./OpenFederatedLearning/submodules/fets_ai/Algorithms/')
 
 import os
 import numpy as np
