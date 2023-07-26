@@ -1,3 +1,6 @@
+import sys
+sys.path.append('./OpenFederatedLearning/submodules/fets_ai/Algorithms/')
+
 import argparse
 import os
 import shutil

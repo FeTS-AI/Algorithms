@@ -1,3 +1,6 @@
+import sys
+sys.path.append('./OpenFederatedLearning/submodules/fets_ai/Algorithms/GANDLF_module/')
+
 import argparse
 import os
 import numpy as np
