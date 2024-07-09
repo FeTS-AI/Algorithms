@@ -60,5 +60,5 @@ tqdm==4.66.3
 traitlets==4.3.3
 wcwidth==0.2.5
 webencodings==0.5.1
-zipp==3.3.1
+zipp==3.19.1
 setuptools==65.5.1
