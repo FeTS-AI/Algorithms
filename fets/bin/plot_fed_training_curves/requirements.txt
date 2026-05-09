@@ -26,7 +26,7 @@ kiwisolver==1.2.0
 lesscpy==0.14.0
 MarkupSafe==1.1.1
 matplotlib==3.3.2
-mistune==2.0.3
+mistune==3.2.1
 nbclient==0.5.1
 nbconvert==6.5.1
 nbformat==5.0.8
